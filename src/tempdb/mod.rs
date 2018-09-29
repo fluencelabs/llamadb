@@ -63,7 +63,6 @@ impl<'a> Group for ScanGroup<'a> {
 
         Box::new(table.rowid_index.iter().map(move |key_v| {
             use byteutils;
-            use std::borrow::IntoCow;
 
             let raw_key: &[u8] = &key_v;
             trace!("KEY: {:?}", raw_key);
@@ -108,13 +107,13 @@ impl<'a> Group for ScanGroup<'a> {
                     let bytes = &raw_key[key_offset..key_offset + size];
 
                     trace!("from bytes: {:?}, {:?}", column.dbtype, bytes);
-                    let value = ColumnValueOps::from_bytes(column.dbtype, bytes.into_cow()).unwrap();
+                    let value = ColumnValueOps::from_bytes(column.dbtype, bytes.into()).unwrap();
                     key_offset += size;
                     value
                 }
             }).collect();
 
-            v.into_cow()
+            v.into()
         }))
     }
 }

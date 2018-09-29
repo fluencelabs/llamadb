@@ -56,8 +56,6 @@ impl fmt::Debug for Identifier {
 }
 
 fn normalize(value: &str) -> Option<String> {
-    use std::ascii::AsciiExt;
-
     fn is_valid(value: &str) -> bool {
         if let Some(c) = value.chars().nth(0) {
             // Test if the first character is not a digit or space
