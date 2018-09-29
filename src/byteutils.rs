@@ -3,25 +3,25 @@
 pub fn read_u16_le(buf: &[u8]) -> u16 {
     assert_eq!(buf.len(), 2);
 
-    buf.iter().enumerate().fold(0, |prev, (i, v)| {
-        prev | ((*v as u16) << (i*8))
-    })
+    buf.iter()
+        .enumerate()
+        .fold(0, |prev, (i, v)| prev | ((*v as u16) << (i * 8)))
 }
 
 pub fn read_u32_le(buf: &[u8]) -> u32 {
     assert_eq!(buf.len(), 4);
 
-    buf.iter().enumerate().fold(0, |prev, (i, v)| {
-        prev | ((*v as u32) << (i*8))
-    })
+    buf.iter()
+        .enumerate()
+        .fold(0, |prev, (i, v)| prev | ((*v as u32) << (i * 8)))
 }
 
 pub fn read_u64_le(buf: &[u8]) -> u64 {
     assert_eq!(buf.len(), 8);
 
-    buf.iter().enumerate().fold(0, |prev, (i, v)| {
-        prev | ((*v as u64) << (i*8))
-    })
+    buf.iter()
+        .enumerate()
+        .fold(0, |prev, (i, v)| prev | ((*v as u64) << (i * 8)))
 }
 
 #[must_use = "must use returned length"]
@@ -33,7 +33,7 @@ pub fn read_uvar(buf: &[u8]) -> Option<(usize, u64)> {
         accum = (accum << 7) | (*v as u64 & 0x7F);
 
         if !has_more {
-            return Some((i+1, accum));
+            return Some((i + 1, accum));
         }
     }
 
@@ -44,7 +44,7 @@ pub fn write_u16_le(value: u16, buf: &mut [u8]) {
     assert_eq!(buf.len(), 2);
 
     for (i, v) in buf.iter_mut().enumerate() {
-        let byte = ((value & (0xFF << (i*8))) >> (i*8)) as u8;
+        let byte = ((value & (0xFF << (i * 8))) >> (i * 8)) as u8;
         *v = byte;
     }
 }
@@ -53,7 +53,7 @@ pub fn write_u32_le(value: u32, buf: &mut [u8]) {
     assert_eq!(buf.len(), 4);
 
     for (i, v) in buf.iter_mut().enumerate() {
-        let byte = ((value & (0xFF << (i*8))) >> (i*8)) as u8;
+        let byte = ((value & (0xFF << (i * 8))) >> (i * 8)) as u8;
         *v = byte;
     }
 }
@@ -62,7 +62,7 @@ pub fn write_u64_le(value: u64, buf: &mut [u8]) {
     assert_eq!(buf.len(), 8);
 
     for (i, v) in buf.iter_mut().enumerate() {
-        let byte = ((value & (0xFF << (i*8))) >> (i*8)) as u8;
+        let byte = ((value & (0xFF << (i * 8))) >> (i * 8)) as u8;
         *v = byte;
     }
 }
@@ -70,9 +70,7 @@ pub fn write_u64_le(value: u64, buf: &mut [u8]) {
 pub fn read_udbinteger(bytes: &[u8]) -> u64 {
     assert!(bytes.len() >= 1 && bytes.len() <= 8);
 
-    bytes.iter().fold(0, |prev, &v| {
-        (prev << 8) | (v as u64)
-    })
+    bytes.iter().fold(0, |prev, &v| (prev << 8) | (v as u64))
 }
 
 pub fn read_sdbinteger(bytes: &[u8]) -> i64 {
@@ -113,7 +111,7 @@ pub fn write_udbinteger(value: u64, buf: &mut [u8]) {
 
     for (i, v) in buf.iter_mut().enumerate() {
         let j = len - 1 - i;
-        let byte = ((value & (0xFF << (j*8))) >> (j*8)) as u8;
+        let byte = ((value & (0xFF << (j * 8))) >> (j * 8)) as u8;
         *v = byte;
     }
 }
@@ -158,16 +156,12 @@ pub fn write_uvar(value: u64, buf: &mut [u8]) -> Option<usize> {
         remainder = remainder >> 7;
         let has_more = remainder != 0;
 
-        buf[i] = if i == 0 {
-            data
-        } else {
-            0x80 | data
-        };
+        buf[i] = if i == 0 { data } else { 0x80 | data };
 
         if !has_more {
             // Reverse the buffer; most significant numbers should go first.
-            buf[0..i+1].reverse();
-            return Some(i + 1)
+            buf[0..i + 1].reverse();
+            return Some(i + 1);
         }
     }
 
@@ -177,10 +171,10 @@ pub fn write_uvar(value: u64, buf: &mut [u8]) -> Option<usize> {
 
 #[cfg(test)]
 mod test {
+    use super::{read_sdbinteger, read_udbinteger};
     use super::{read_u16_le, read_u32_le, read_u64_le, read_uvar};
-    use super::{read_udbinteger, read_sdbinteger};
+    use super::{write_sdbinteger, write_udbinteger};
     use super::{write_u16_le, write_u32_le, write_u64_le, write_uvar};
-    use super::{write_udbinteger, write_sdbinteger};
     use std;
 
     static TEST_U16: [(u16, &'static [u8]); 3] = [
@@ -189,13 +183,12 @@ mod test {
         (0xFFFF, &[0xFF, 0xFF]),
     ];
 
-    static TEST_U32: [(u32, &'static [u8]); 1] = [
-        (0x04030201, &[0x01, 0x02, 0x03, 0x04])
-    ];
+    static TEST_U32: [(u32, &'static [u8]); 1] = [(0x04030201, &[0x01, 0x02, 0x03, 0x04])];
 
-    static TEST_U64: [(u64, &'static [u8]); 1] = [
-        (0x0807060504030201, &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08])
-    ];
+    static TEST_U64: [(u64, &'static [u8]); 1] = [(
+        0x0807060504030201,
+        &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08],
+    )];
 
     static TEST_UVAR: [(u64, &'static [u8]); 8] = [
         (0x00, &[0x00]),
@@ -204,8 +197,14 @@ mod test {
         (0xFF, &[0x81, 0x7F]),
         (0x0100, &[0x82, 0x00]),
         (0xFFFF_FFFF, &[0x8F, 0xFF, 0xFF, 0xFF, 0x7F]),
-        (0x1234_5678_9ABC_DEF0, &[0x92, 0x9A, 0x95, 0xCF, 0x89, 0xD5, 0xF3, 0xBD, 0x70]),
-        (0xFFFF_FFFF_FFFF_FFFF, &[0x81, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F]),
+        (
+            0x1234_5678_9ABC_DEF0,
+            &[0x92, 0x9A, 0x95, 0xCF, 0x89, 0xD5, 0xF3, 0xBD, 0x70],
+        ),
+        (
+            0xFFFF_FFFF_FFFF_FFFF,
+            &[0x81, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F],
+        ),
     ];
 
     static TEST_UDB: [(u64, &'static [u8]); 5] = [
@@ -222,8 +221,14 @@ mod test {
         (-1, &[0x7F, 0xFF]),
         (0, &[0x80, 0x00]),
         (32767, &[0xFF, 0xFF]),
-        (std::i64::MIN, &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
-        (std::i64::MAX, &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]),
+        (
+            std::i64::MIN,
+            &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        ),
+        (
+            std::i64::MAX,
+            &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+        ),
     ];
 
     #[test]

@@ -1,9 +1,17 @@
 language: rust
 
-rust:
-  - nightly
+rust: nightly
+
+allow_failures:
+  - rust: nightly
+
+cache: cargo
+
+before_script:
+  - rustup component add rustfmt-preview --toolchain nightly
 
 script:
-  - cargo test -v
-  - cd cli
+  - cargo fmt --all -- --check -v
   - cargo build -v
+  - cargo test -v
+

@@ -1,17 +1,21 @@
-/// The parser is a recursive descent parser.
-
-use std::marker::{PhantomData, Sized};
 use std::fmt;
+/// The parser is a recursive descent parser.
+use std::marker::{PhantomData, Sized};
 
-use super::lexer::Token;
 use super::ast::*;
+use super::lexer::Token;
 
 mod tokens;
 use self::tokens::Tokens;
+use std::error::Error;
+use std::option::Option::None;
 
+pub type RuleResult<T> = Result<T, RuleError>;
+
+#[derive(PartialEq, Debug)]
 pub enum RuleError {
     ExpectingFirst(&'static str, Option<Token>),
-    Expecting(&'static str, Option<Token>)
+    Expecting(&'static str, Option<Token>),
 }
 
 impl fmt::Display for RuleError {
@@ -22,31 +26,17 @@ impl fmt::Display for RuleError {
             &ExpectingFirst(s, Some(ref token)) => write!(f, "Expected {}; got {:?}", s, token),
             &Expecting(s, Some(ref token)) => write!(f, "Expected {}; got {:?}", s, token),
             &ExpectingFirst(s, None) => write!(f, "Expected {}; got no more tokens", s),
-            &Expecting(s, None) => write!(f, "Expected {}; got no more tokens", s)
+            &Expecting(s, None) => write!(f, "Expected {}; got no more tokens", s),
         }
     }
 }
 
-impl fmt::Debug for RuleError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "{}", self)
-    }
-}
+impl Error for RuleError {}
 
-pub type RuleResult<T> = Result<T, RuleError>;
-
-fn rule_result_not_first<T>(rule_result: RuleResult<T>) -> RuleResult<T> {
-    use self::RuleError::*;
-
+fn try_notfirst<T>(rule_result: RuleResult<T>) -> RuleResult<T> {
     match rule_result {
-        Err(ExpectingFirst(s, t)) => Err(Expecting(s, t)),
-        value => value
-    }
-}
-
-macro_rules! try_notfirst {
-    ($r:expr) => {
-        try!(rule_result_not_first($r))
+        Err(RuleError::ExpectingFirst(s, t)) => Err(RuleError::Expecting(s, t)),
+        value => value,
     }
 }
 
@@ -71,10 +61,8 @@ trait RuleExt: Rule {
                 *tokens = tokens_copy;
                 Ok(Some(v))
             },
-            Err(RuleError::ExpectingFirst(..)) => {
-                Ok(None)
-            },
-            Err(e) => Err(e)
+            Err(RuleError::ExpectingFirst(..)) => Ok(None),
+            Err(e) => Err(e),
         }
     }
 
@@ -83,10 +71,10 @@ trait RuleExt: Rule {
     }
 
     /// Match zero or more consecutive occurances of the rule
-    fn parse_series_star<'a>(tokens: &mut Tokens<'a>) -> RuleResult<Vec<Self::Output>> {
+    fn parse_series_star(tokens: &mut Tokens) -> RuleResult<Vec<Self::Output>> {
         let mut v = Vec::new();
 
-        while let Some(value) = try!(Self::parse_lookahead(tokens)) {
+        while let Some(value) = Self::parse_lookahead(tokens)? {
             v.push(value);
         }
 
@@ -95,7 +83,7 @@ trait RuleExt: Rule {
 }
 
 struct CommaDelimitedRule<R: Rule> {
-    _marker: PhantomData<R>
+    _marker: PhantomData<R>,
 }
 
 impl<R: Rule> Rule for CommaDelimitedRule<R> {
@@ -104,13 +92,13 @@ impl<R: Rule> Rule for CommaDelimitedRule<R> {
     fn parse(tokens: &mut Tokens) -> RuleResult<Vec<R::Output>> {
         let mut v = Vec::new();
 
-        let value = try!(R::parse(tokens));
+        let value = R::parse(tokens)?;
         v.push(value);
 
         // loop until no comma
         while tokens.pop_if_token(&Token::Comma) {
             // After the first item, ExpectingFirst gets converted to Expecting.
-            let value = try!(rule_result_not_first(R::parse(tokens)));
+            let value = try_notfirst(R::parse(tokens))?;
             v.push(value);
         }
 
@@ -119,16 +107,16 @@ impl<R: Rule> Rule for CommaDelimitedRule<R> {
 }
 
 struct ParensSurroundRule<R: Rule> {
-    _marker: PhantomData<R>
+    _marker: PhantomData<R>,
 }
 
 impl<R: Rule> Rule for ParensSurroundRule<R> {
     type Output = R::Output;
 
     fn parse(tokens: &mut Tokens) -> RuleResult<R::Output> {
-        try!(tokens.pop_token_expecting(&Token::LeftParen, "("));
-        let p = try_notfirst!(R::parse(tokens));
-        try_notfirst!(tokens.pop_token_expecting(&Token::RightParen, ")"));
+        tokens.pop_token_expecting(&Token::LeftParen, "(")?;
+        let p = try_notfirst(R::parse(tokens))?;
+        try_notfirst(tokens.pop_token_expecting(&Token::RightParen, ")"))?;
         Ok(p)
     }
 }
@@ -151,7 +139,7 @@ impl Rule for Ident {
 impl Rule for BinaryOp {
     type Output = BinaryOp;
     fn parse(tokens: &mut Tokens) -> RuleResult<BinaryOp> {
-        match try!(tokens.pop_expecting("binary operator")) {
+        match tokens.pop_expecting("binary operator")? {
             &Token::Equal => Ok(BinaryOp::Equal),
             &Token::NotEqual => Ok(BinaryOp::NotEqual),
             &Token::LessThan => Ok(BinaryOp::LessThan),
@@ -167,7 +155,7 @@ impl Rule for BinaryOp {
             &Token::Ampersand => Ok(BinaryOp::BitAnd),
             &Token::Pipe => Ok(BinaryOp::BitOr),
             &Token::DoublePipe => Ok(BinaryOp::Concatenate),
-            _ => Err(tokens.expecting("binary operator"))
+            _ => Err(tokens.expecting("binary operator")),
         }
     }
 }
@@ -177,7 +165,7 @@ impl UnaryOp {
         use super::ast::UnaryOp::*;
 
         match self {
-            &Negate => 6
+            &Negate => 6,
         }
     }
 }
@@ -191,7 +179,8 @@ impl BinaryOp {
             &Multiply | &Divide => 5,
             &Add | &Subtract | &BitAnd | &BitOr | &Concatenate => 4,
             // comparison
-            &Equal | &NotEqual | &LessThan | &LessThanOrEqual | &GreaterThan | &GreaterThanOrEqual => 3,
+            &Equal | &NotEqual | &LessThan | &LessThanOrEqual | &GreaterThan |
+            &GreaterThanOrEqual => 3,
             // conjugation
             &And => 2,
             &Or => 1,
@@ -213,22 +202,22 @@ impl Expression {
     /// so this is simple a method that doesn't involve creating different
     /// rules for different precedence levels.
     fn parse_precedence(tokens: &mut Tokens, min_precedence: u8) -> RuleResult<Expression> {
-        let mut expr = try!(Expression::parse_beginning(tokens));
+        let mut expr = Expression::parse_beginning(tokens)?;
         let mut prev_tokens = *tokens;
 
         // Test for after-expression tokens
-        while let Some(binary_op) = try_notfirst!(BinaryOp::parse_lookahead(tokens)) {
+        while let Some(binary_op) = try_notfirst(BinaryOp::parse_lookahead(tokens))? {
             let binary_op_precedence = binary_op.precedence();
 
             if binary_op_precedence >= min_precedence {
                 // Assuming left associative
                 let q = binary_op_precedence + 1;
-                let rhs = try_notfirst!(Expression::parse_precedence(tokens, q));
+                let rhs = try_notfirst(Expression::parse_precedence(tokens, q))?;
 
                 let new_expr = Expression::BinaryOp {
                     lhs: Box::new(expr),
                     rhs: Box::new(rhs),
-                    op: binary_op
+                    op: binary_op,
                 };
 
                 expr = new_expr;
@@ -250,22 +239,28 @@ impl Expression {
             // Unary, positive
 
             // There's no point in making a Positive unary operator, so we'll "cheat" and use negate's precedence.
-            Ok(try_notfirst!(Expression::parse_precedence(tokens, UnaryOp::Negate.precedence())))
+            try_notfirst(Expression::parse_precedence(
+                tokens,
+                UnaryOp::Negate.precedence(),
+            ))
         } else if tokens.pop_if_token(&Token::Minus) {
             // Unary, negation
-            let e = try_notfirst!(Expression::parse_precedence(tokens, UnaryOp::Negate.precedence()));
+            let expr = try_notfirst(Expression::parse_precedence(
+                tokens,
+                UnaryOp::Negate.precedence(),
+            ));
             Ok(Expression::UnaryOp {
-                expr: Box::new(e),
-                op: UnaryOp::Negate
+                expr: Box::new(expr?),
+                op: UnaryOp::Negate,
             })
         } else if tokens.pop_if_token(&Token::LeftParen) {
-            if let Some(subquery) = try!(SelectStatement::parse_lookahead(tokens)) {
+            if let Some(subquery) = SelectStatement::parse_lookahead(tokens)? {
                 // Expression is a subquery.
-                try!(tokens.pop_token_expecting(&Token::RightParen, ") after subquery"));
+                tokens.pop_token_expecting(&Token::RightParen, ") after subquery")?;
                 Ok(Expression::Subquery(Box::new(subquery)))
-            } else if let Some(encased_expression) = try!(Expression::parse_lookahead(tokens)) {
+            } else if let Some(encased_expression) = Expression::parse_lookahead(tokens)? {
                 // Expression is surrounded in parens for precedence.
-                try!(tokens.pop_token_expecting(&Token::RightParen, ") after expression"));
+                tokens.pop_token_expecting(&Token::RightParen, ") after expression")?;
                 Ok(encased_expression)
             } else {
                 Err(tokens.expecting("expression or subquery after ("))
@@ -276,18 +271,27 @@ impl Expression {
             if tokens.pop_if_token(&Token::LeftParen) {
                 // Function call
                 if tokens.pop_if_token(&Token::Asterisk) {
-                    try_notfirst!(tokens.pop_token_expecting(&Token::RightParen, ") after aggregate asterisk. e.g. (*)"));
+                    try_notfirst(tokens.pop_token_expecting(
+                        &Token::RightParen,
+                        ") after aggregate asterisk. e.g. (*)",
+                    ))?;
 
                     Ok(Expression::FunctionCallAggregateAll { name: ident })
                 } else {
-                    let arguments = try_notfirst!(Expression::parse_comma_delimited(tokens));
+                    let arguments = try_notfirst(Expression::parse_comma_delimited(tokens))?;
 
-                    try_notfirst!(tokens.pop_token_expecting(&Token::RightParen, ") after function arguments"));
+                    try_notfirst(
+                        tokens
+                            .pop_token_expecting(&Token::RightParen, ") after function arguments"),
+                    )?;
 
-                    Ok(Expression::FunctionCall { name: ident, arguments: arguments })
+                    Ok(Expression::FunctionCall {
+                        name: ident,
+                        arguments,
+                    })
                 }
             } else if tokens.pop_if_token(&Token::Dot) {
-                let ident2 = try_notfirst!(tokens.pop_ident_expecting("ident after ."));
+                let ident2 = try_notfirst(tokens.pop_ident_expecting("ident after ."))?;
 
                 Ok(Expression::IdentMember(ident, ident2))
             } else {
@@ -311,7 +315,7 @@ impl Rule for AsAlias {
     fn parse(tokens: &mut Tokens) -> RuleResult<String> {
         if tokens.pop_if_token(&Token::As) {
             // Expecting alias
-            Ok(try_notfirst!(tokens.pop_ident_expecting("alias after `as` keyword")))
+            try_notfirst(tokens.pop_ident_expecting("alias after `as` keyword"))
         } else {
             tokens.pop_ident_expecting("alias name or `as` keyword")
         }
@@ -321,11 +325,11 @@ impl Rule for AsAlias {
 impl Rule for Table {
     type Output = Table;
     fn parse(tokens: &mut Tokens) -> RuleResult<Table> {
-        let table_name = try!(tokens.pop_ident_expecting("table name"));
+        let table_name = tokens.pop_ident_expecting("table name")?;
 
         Ok(Table {
             database_name: None,
-            table_name: table_name
+            table_name,
         })
     }
 }
@@ -333,22 +337,19 @@ impl Rule for Table {
 impl Rule for TableOrSubquery {
     type Output = TableOrSubquery;
     fn parse(tokens: &mut Tokens) -> RuleResult<TableOrSubquery> {
-        if let Some(select) = try!(ParensSurroundRule::<SelectStatement>::parse_lookahead(tokens)) {
+        if let Some(select) = ParensSurroundRule::<SelectStatement>::parse_lookahead(tokens)? {
             // Subquery
-            let alias = try_notfirst!(AsAlias::parse(tokens));
+            let alias = try_notfirst(AsAlias::parse(tokens))?;
 
             Ok(TableOrSubquery::Subquery {
                 subquery: Box::new(select),
-                alias: alias
+                alias,
             })
-        } else if let Some(table) = try!(Table::parse_lookahead(tokens)) {
+        } else if let Some(table) = Table::parse_lookahead(tokens)? {
             // Table
-            let alias = try_notfirst!(AsAlias::parse_lookahead(tokens));
+            let alias = try_notfirst(AsAlias::parse_lookahead(tokens))?;
 
-            Ok(TableOrSubquery::Table {
-                table: table,
-                alias: alias
-            })
+            Ok(TableOrSubquery::Table { table, alias })
         } else {
             Err(tokens.expecting("subquery or table name"))
         }
@@ -360,41 +361,86 @@ impl Rule for SelectColumn {
     fn parse(tokens: &mut Tokens) -> RuleResult<SelectColumn> {
         if tokens.pop_if_token(&Token::Asterisk) {
             Ok(SelectColumn::AllColumns)
-        } else if let Some(expr) = try!(Expression::parse_lookahead(tokens)) {
-            let alias = try_notfirst!(AsAlias::parse_lookahead(tokens));
+        } else if let Some(expr) = Expression::parse_lookahead(tokens)? {
+            let alias = try_notfirst(AsAlias::parse_lookahead(tokens))?;
 
-            Ok(SelectColumn::Expr {
-                expr: expr,
-                alias: alias
-            })
+            Ok(SelectColumn::Expr { expr, alias })
         } else {
             Err(tokens.expecting("* or expression for SELECT column"))
         }
     }
 }
 
+impl Rule for DeleteStatement {
+    type Output = DeleteStatement;
+    fn parse(tokens: &mut Tokens) -> RuleResult<DeleteStatement> {
+        tokens.pop_token_expecting(&Token::Delete, "DELETE")?;
+
+        // it doesn't matter '*' is or isn't in delete statement
+        tokens.pop_if_token(&Token::Asterisk);
+
+        let from_token = tokens.pop_expecting("FROM")?;
+        if *from_token != Token::From {
+            return Err(RuleError::Expecting("FROM", Some(from_token.clone())));
+        } else {
+            tokens.expecting("FROM");
+        }
+
+        let table = try_notfirst(TableOrSubquery::parse(tokens))?;
+
+        let where_expr = if tokens.pop_if_token(&Token::Where) {
+            Some(try_notfirst(Expression::parse(tokens))?)
+        } else {
+            None
+        };
+
+        Ok(DeleteStatement { table, where_expr })
+    }
+}
+
+impl Rule for TruncateStatement {
+    type Output = TruncateStatement;
+    fn parse(tokens: &mut Tokens) -> RuleResult<TruncateStatement> {
+        tokens.pop_token_expecting(&Token::Truncate, "TRUNCATE")?;
+        tokens.pop_token_expecting(&Token::Table, "TABLE")?;
+        let table = try_notfirst(Table::parse(tokens))?;
+        Ok(TruncateStatement { table })
+    }
+}
+
+impl Rule for DropTableStatement {
+    type Output = DropTableStatement;
+    fn parse(tokens: &mut Tokens) -> RuleResult<DropTableStatement> {
+        tokens.pop_token_expecting(&Token::Drop, "DROP")?;
+        tokens.pop_token_expecting(&Token::Table, "TABLE")?;
+        let table = try_notfirst(Table::parse(tokens))?;
+        Ok(DropTableStatement { table })
+    }
+}
+
 impl Rule for SelectStatement {
     type Output = SelectStatement;
     fn parse(tokens: &mut Tokens) -> RuleResult<SelectStatement> {
-        try!(tokens.pop_token_expecting(&Token::Select, "SELECT"));
+        tokens.pop_token_expecting(&Token::Select, "SELECT")?;
 
-        let result_columns: Vec<SelectColumn> = try_notfirst!(SelectColumn::parse_comma_delimited(tokens));
+        let result_columns: Vec<SelectColumn> =
+            try_notfirst(SelectColumn::parse_comma_delimited(tokens))?;
 
-        let from = try_notfirst!(From::parse(tokens));
+        let from = try_notfirst(From::parse(tokens))?;
 
         let where_expr = if tokens.pop_if_token(&Token::Where) {
-            Some(try_notfirst!(Expression::parse(tokens)))
+            Some(try_notfirst(Expression::parse(tokens))?)
         } else {
             None
         };
 
         let (group_by, having) = if tokens.pop_if_token(&Token::Group) {
-            try_notfirst!(tokens.pop_token_expecting(&Token::By, "BY after GROUP"));
+            try_notfirst(tokens.pop_token_expecting(&Token::By, "BY after GROUP"))?;
 
-            let group_exprs = try_notfirst!(Expression::parse_comma_delimited(tokens));
+            let group_exprs = try_notfirst(Expression::parse_comma_delimited(tokens))?;
 
             if tokens.pop_if_token(&Token::Having) {
-                let having_expr = try_notfirst!(Expression::parse(tokens));
+                let having_expr = try_notfirst(Expression::parse(tokens))?;
                 (group_exprs, Some(having_expr))
             } else {
                 (group_exprs, None)
@@ -404,20 +450,20 @@ impl Rule for SelectStatement {
         };
 
         let order_by = if tokens.pop_if_token(&Token::Order) {
-            try_notfirst!(tokens.pop_token_expecting(&Token::By, "BY after ORDER"));
+            try_notfirst(tokens.pop_token_expecting(&Token::By, "BY after ORDER"))?;
 
-            try_notfirst!(OrderingTerm::parse_comma_delimited(tokens))
+            try_notfirst(OrderingTerm::parse_comma_delimited(tokens))?
         } else {
             Vec::new()
         };
 
         Ok(SelectStatement {
-            result_columns: result_columns,
-            from: from,
-            where_expr: where_expr,
-            group_by: group_by,
-            having: having,
-            order_by: order_by
+            result_columns,
+            from,
+            where_expr,
+            group_by,
+            having,
+            order_by,
         })
     }
 }
@@ -425,21 +471,18 @@ impl Rule for SelectStatement {
 impl Rule for From {
     type Output = From;
     fn parse(tokens: &mut Tokens) -> RuleResult<From> {
-        try!(tokens.pop_token_expecting(&Token::From, "FROM"));
+        tokens.pop_token_expecting(&Token::From, "FROM")?;
 
-        let tables = try_notfirst!(TableOrSubquery::parse_comma_delimited(tokens));
+        let tables = try_notfirst(TableOrSubquery::parse_comma_delimited(tokens))?;
 
         if tables.len() == 1 {
             // Could add a JOIN clause
-            let joins = try_notfirst!(Join::parse_series_star(tokens));
+            let joins = try_notfirst(Join::parse_series_star(tokens))?;
 
             if joins.len() > 0 {
                 let table = tables.into_iter().nth(0).unwrap();
 
-                Ok(From::Join {
-                    table: table,
-                    joins: joins
-                })
+                Ok(From::Join { table, joins })
             } else {
                 Ok(From::Cross(tables))
             }
@@ -456,10 +499,10 @@ impl Rule for JoinOperator {
             // "Outer" is optional. Pop if it exists.
             tokens.pop_if_token(&Token::Outer);
 
-            try_notfirst!(tokens.pop_token_expecting(&Token::Join, "JOIN after LEFT (OUTER)"));
+            try_notfirst(tokens.pop_token_expecting(&Token::Join, "JOIN after LEFT (OUTER)"))?;
             Ok(JoinOperator::Left)
         } else if tokens.pop_if_token(&Token::Inner) {
-            try_notfirst!(tokens.pop_token_expecting(&Token::Join, "JOIN after INNER"));
+            try_notfirst(tokens.pop_token_expecting(&Token::Join, "JOIN after INNER"))?;
             Ok(JoinOperator::Inner)
         } else if tokens.pop_if_token(&Token::Join) {
             // implied inner join
@@ -473,15 +516,15 @@ impl Rule for JoinOperator {
 impl Rule for Join {
     type Output = Join;
     fn parse(tokens: &mut Tokens) -> RuleResult<Join> {
-        let operator = try!(JoinOperator::parse(tokens));
-        let table = try_notfirst!(TableOrSubquery::parse(tokens));
-        try_notfirst!(tokens.pop_token_expecting(&Token::On, "ON"));
-        let on = try_notfirst!(Expression::parse(tokens));
+        let operator = JoinOperator::parse(tokens)?;
+        let table = try_notfirst(TableOrSubquery::parse(tokens))?;
+        try_notfirst(tokens.pop_token_expecting(&Token::On, "ON"))?;
+        let on = try_notfirst(Expression::parse(tokens))?;
 
         Ok(Join {
-            operator: operator,
-            table: table,
-            on: on
+            operator,
+            table,
+            on,
         })
     }
 }
@@ -489,7 +532,7 @@ impl Rule for Join {
 impl Rule for OrderingTerm {
     type Output = OrderingTerm;
     fn parse(tokens: &mut Tokens) -> RuleResult<OrderingTerm> {
-        let expr = try!(Expression::parse(tokens));
+        let expr = Expression::parse(tokens)?;
 
         let order = if tokens.pop_if_token(&Token::Asc) {
             Order::Ascending
@@ -500,29 +543,27 @@ impl Rule for OrderingTerm {
             Order::Ascending
         };
 
-        Ok(OrderingTerm {
-            expr: expr,
-            order: order
-        })
+        Ok(OrderingTerm { expr, order })
     }
 }
 
 impl Rule for InsertStatement {
     type Output = InsertStatement;
     fn parse(tokens: &mut Tokens) -> RuleResult<InsertStatement> {
-        try!(tokens.pop_token_expecting(&Token::Insert, "INSERT"));
-        try_notfirst!(tokens.pop_token_expecting(&Token::Into, "INTO"));
+        tokens.pop_token_expecting(&Token::Insert, "INSERT")?;
+        try_notfirst(tokens.pop_token_expecting(&Token::Into, "INTO"))?;
 
-        let table = try_notfirst!(Table::parse(tokens));
+        let table = try_notfirst(Table::parse(tokens))?;
 
-        let into_columns = try_notfirst!(ParensCommaDelimitedRule::<Ident>::parse_lookahead(tokens));
+        let into_columns =
+            try_notfirst(ParensCommaDelimitedRule::<Ident>::parse_lookahead(tokens))?;
 
-        let source = try_notfirst!(InsertSource::parse(tokens));
+        let source = try_notfirst(InsertSource::parse(tokens))?;
 
         Ok(InsertStatement {
-            table: table,
-            into_columns: into_columns,
-            source: source
+            table,
+            into_columns,
+            source,
         })
     }
 }
@@ -531,9 +572,11 @@ impl Rule for InsertSource {
     type Output = InsertSource;
     fn parse(tokens: &mut Tokens) -> RuleResult<InsertSource> {
         if tokens.pop_if_token(&Token::Values) {
-            let values = try_notfirst!(CommaDelimitedRule::<ParensCommaDelimitedRule<Expression>>::parse(tokens));
+            let values = try_notfirst(
+                CommaDelimitedRule::<ParensCommaDelimitedRule<Expression>>::parse(tokens),
+            )?;
             Ok(InsertSource::Values(values))
-        } else if let Some(select) = try!(SelectStatement::parse_lookahead(tokens)) {
+        } else if let Some(select) = SelectStatement::parse_lookahead(tokens)? {
             Ok(InsertSource::Select(Box::new(select)))
         } else {
             Err(tokens.expecting("VALUES or SELECT"))
@@ -545,19 +588,20 @@ impl Rule for CreateTableColumnConstraint {
     type Output = CreateTableColumnConstraint;
     fn parse(tokens: &mut Tokens) -> RuleResult<CreateTableColumnConstraint> {
         if tokens.pop_if_token(&Token::Constraint) {
-            let name = try_notfirst!(tokens.pop_ident_expecting("constraint name after CONSTRAINT"));
-            let constraint = try_notfirst!(CreateTableColumnConstraintType::parse(tokens));
+            let name =
+                try_notfirst(tokens.pop_ident_expecting("constraint name after CONSTRAINT"))?;
+            let constraint = try_notfirst(CreateTableColumnConstraintType::parse(tokens))?;
 
             Ok(CreateTableColumnConstraint {
                 name: Some(name),
-                constraint: constraint
+                constraint,
             })
         } else {
-            let constraint = try!(CreateTableColumnConstraintType::parse(tokens));
+            let constraint = CreateTableColumnConstraintType::parse(tokens)?;
 
             Ok(CreateTableColumnConstraint {
                 name: None,
-                constraint: constraint
+                constraint,
             })
         }
     }
@@ -569,19 +613,16 @@ impl Rule for CreateTableColumnConstraintType {
         use super::ast::CreateTableColumnConstraintType::*;
 
         if tokens.pop_if_token(&Token::Primary) {
-            try_notfirst!(tokens.pop_token_expecting(&Token::Key, "KEY after PRIMARY"));
+            try_notfirst(tokens.pop_token_expecting(&Token::Key, "KEY after PRIMARY"))?;
             Ok(PrimaryKey)
         } else if tokens.pop_if_token(&Token::Unique) {
             Ok(Unique)
         } else if tokens.pop_if_token(&Token::Null) {
             Ok(Nullable)
         } else if tokens.pop_if_token(&Token::References) {
-            let table = try_notfirst!(Table::parse(tokens));
-            let columns = try_notfirst!(ParensCommaDelimitedRule::<Ident>::parse_lookahead(tokens));
-            Ok(ForeignKey {
-                table: table,
-                columns: columns
-            })
+            let table = try_notfirst(Table::parse(tokens))?;
+            let columns = try_notfirst(ParensCommaDelimitedRule::<Ident>::parse_lookahead(tokens))?;
+            Ok(ForeignKey { table, columns })
         } else {
             Err(tokens.expecting("column constraint"))
         }
@@ -591,12 +632,12 @@ impl Rule for CreateTableColumnConstraintType {
 impl Rule for CreateTableColumn {
     type Output = CreateTableColumn;
     fn parse(tokens: &mut Tokens) -> RuleResult<CreateTableColumn> {
-        let column_name = try!(tokens.pop_ident_expecting("column name"));
-        let type_name = try_notfirst!(tokens.pop_ident_expecting("type name"));
+        let column_name = tokens.pop_ident_expecting("column name")?;
+        let type_name = try_notfirst(tokens.pop_ident_expecting("type name"))?;
 
         let type_size = if tokens.pop_if_token(&Token::LeftParen) {
-            let x = try!(tokens.pop_number_expecting("column type size"));
-            try!(tokens.pop_token_expecting(&Token::RightParen, ")"));
+            let x = tokens.pop_number_expecting("column type size")?;
+            tokens.pop_token_expecting(&Token::RightParen, ")")?;
             Some(x)
         } else {
             None
@@ -607,22 +648,22 @@ impl Rule for CreateTableColumn {
                 // Dynamic array
                 Some(None)
             } else {
-                let x = try!(tokens.pop_number_expecting("column array size"));
-                try!(tokens.pop_token_expecting(&Token::RightBracket, "]"));
+                let x = tokens.pop_number_expecting("column array size")?;
+                tokens.pop_token_expecting(&Token::RightBracket, "]")?;
                 Some(Some(x))
             }
         } else {
             None
         };
 
-        let constraints = try_notfirst!(CreateTableColumnConstraint::parse_series_star(tokens));
+        let constraints = try_notfirst(CreateTableColumnConstraint::parse_series_star(tokens))?;
 
         Ok(CreateTableColumn {
-            column_name: column_name,
-            type_name: type_name,
-            type_size: type_size,
-            type_array_size: type_array_size,
-            constraints: constraints
+            column_name,
+            type_name,
+            type_size,
+            type_array_size,
+            constraints,
         })
     }
 }
@@ -630,27 +671,26 @@ impl Rule for CreateTableColumn {
 impl Rule for CreateTableStatement {
     type Output = CreateTableStatement;
     fn parse(tokens: &mut Tokens) -> RuleResult<CreateTableStatement> {
-        try!(tokens.pop_token_expecting(&Token::Table, "TABLE"));
+        tokens.pop_token_expecting(&Token::Table, "TABLE")?;
 
-        let table = try_notfirst!(Table::parse(tokens));
+        let table = try_notfirst(Table::parse(tokens))?;
 
-        try_notfirst!(tokens.pop_token_expecting(&Token::LeftParen, "( after table name"));
-        let columns = try_notfirst!(CreateTableColumn::parse_comma_delimited(tokens));
-        try_notfirst!(tokens.pop_token_expecting(&Token::RightParen, ") after table columns and constraints"));
+        try_notfirst(tokens.pop_token_expecting(&Token::LeftParen, "( after table name"))?;
+        let columns = try_notfirst(CreateTableColumn::parse_comma_delimited(tokens))?;
+        try_notfirst(
+            tokens.pop_token_expecting(&Token::RightParen, ") after table columns and constraints"),
+        )?;
 
-        Ok(CreateTableStatement {
-            table: table,
-            columns: columns
-        })
+        Ok(CreateTableStatement { table, columns })
     }
 }
 
 impl Rule for CreateStatement {
     type Output = CreateStatement;
     fn parse(tokens: &mut Tokens) -> RuleResult<CreateStatement> {
-        try!(tokens.pop_token_expecting(&Token::Create, "CREATE"));
+        tokens.pop_token_expecting(&Token::Create, "CREATE")?;
 
-        if let Some(stmt) = try_notfirst!(CreateTableStatement::parse_lookahead(tokens)) {
+        if let Some(stmt) = try_notfirst(CreateTableStatement::parse_lookahead(tokens))? {
             Ok(CreateStatement::Table(stmt))
         } else {
             Err(tokens.expecting("TABLE"))
@@ -661,9 +701,9 @@ impl Rule for CreateStatement {
 impl Rule for ExplainStatement {
     type Output = ExplainStatement;
     fn parse(tokens: &mut Tokens) -> RuleResult<ExplainStatement> {
-        try!(tokens.pop_token_expecting(&Token::Explain, "EXPLAIN"));
+        tokens.pop_token_expecting(&Token::Explain, "EXPLAIN")?;
 
-        if let Some(stmt) = try_notfirst!(SelectStatement::parse_lookahead(tokens)) {
+        if let Some(stmt) = try_notfirst(SelectStatement::parse_lookahead(tokens))? {
             Ok(ExplainStatement::Select(stmt))
         } else {
             Err(tokens.expecting("SELECT statement"))
@@ -671,19 +711,71 @@ impl Rule for ExplainStatement {
     }
 }
 
+impl Rule for UpdateStatement {
+    type Output = UpdateStatement;
+    fn parse(tokens: &mut Tokens) -> RuleResult<UpdateStatement> {
+        tokens.pop_token_expecting(&Token::Update, "UPDATE")?;
+
+        let table = try_notfirst(TableOrSubquery::parse(tokens))?;
+
+        tokens.pop_token_expecting(&Token::Set, "SET")?;
+
+        let assignments = try_notfirst(CommaDelimitedRule::<UpdateField>::parse(tokens))?;
+
+        let where_expr = if tokens.pop_if_token(&Token::Where) {
+            Some(try_notfirst(Expression::parse(tokens))?)
+        } else {
+            None
+        };
+
+        Ok(UpdateStatement {
+            table,
+            update: assignments,
+            where_expr,
+        })
+    }
+}
+
+impl Rule for UpdateField {
+    type Output = UpdateField;
+    fn parse(tokens: &mut Tokens) -> RuleResult<UpdateField> {
+        let mut column_name = tokens.pop_ident_expecting("column name")?;
+        if tokens.pop_if_token(&Token::Dot) {
+            // if column name is {ALIAS.COLUMN_NAME} we take only COLUMN_NAME
+            column_name = try_notfirst(tokens.pop_ident_expecting("ident after ."))?;
+        };
+
+        tokens.pop_token_expecting(&Token::Equal, "'='")?;
+        let expression = try_notfirst(Expression::parse(tokens))?;
+
+        Ok(UpdateField {
+            column_name,
+            new_value: expression,
+        })
+    }
+}
+
 impl Rule for Statement {
     type Output = Statement;
     fn parse(tokens: &mut Tokens) -> RuleResult<Statement> {
-        if let Some(select) = try!(SelectStatement::parse_lookahead(tokens)) {
+        if let Some(select) = SelectStatement::parse_lookahead(tokens)? {
             Ok(Statement::Select(select))
-        } else if let Some(insert) = try!(InsertStatement::parse_lookahead(tokens)) {
+        } else if let Some(insert) = InsertStatement::parse_lookahead(tokens)? {
             Ok(Statement::Insert(insert))
-        } else if let Some(create) = try!(CreateStatement::parse_lookahead(tokens)) {
+        } else if let Some(create) = CreateStatement::parse_lookahead(tokens)? {
             Ok(Statement::Create(create))
-        } else if let Some(explain) = try!(ExplainStatement::parse_lookahead(tokens)) {
+        } else if let Some(drop) = DropTableStatement::parse_lookahead(tokens)? {
+            Ok(Statement::Drop(drop))
+        } else if let Some(delete) = DeleteStatement::parse_lookahead(tokens)? {
+            Ok(Statement::Delete(delete))
+        } else if let Some(truncate) = TruncateStatement::parse_lookahead(tokens)? {
+            Ok(Statement::Truncate(truncate))
+        } else if let Some(explain) = ExplainStatement::parse_lookahead(tokens)? {
             Ok(Statement::Explain(explain))
+        } else if let Some(update) = UpdateStatement::parse_lookahead(tokens)? {
+            Ok(Statement::Update(update))
         } else {
-            Err(tokens.expecting("SELECT, INSERT, CREATE, or EXPLAIN statement"))
+            Err(tokens.expecting("SELECT, INSERT, CREATE, DELETE, TRUNCATE or EXPLAIN statement"))
         }
     }
 }
@@ -696,9 +788,9 @@ impl Rule for Statements {
     fn parse(tokens: &mut Tokens) -> RuleResult<Vec<Statement>> {
         let mut statements = Vec::new();
 
-        while let Some(stmt) = try!(Statement::parse_lookahead(tokens)) {
+        while let Some(stmt) = Statement::parse_lookahead(tokens)? {
             statements.push(stmt);
-            try!(tokens.pop_token_expecting(&Token::Semicolon, "semicolon"));
+            tokens.pop_token_expecting(&Token::Semicolon, "semicolon")?;
         }
 
         Ok(statements)
@@ -707,19 +799,19 @@ impl Rule for Statements {
 
 pub fn parse_statement(tokens_slice: &[Token]) -> Result<Statement, RuleError> {
     let mut tokens = Tokens::new(tokens_slice);
-    let statement = try!(Statement::parse(&mut tokens));
+    let statement = Statement::parse(&mut tokens)?;
 
     // Pop a semicolon if it's there
     tokens.pop_if_token(&Token::Semicolon);
 
-    try!(tokens.expect_no_more_tokens());
+    tokens.expect_no_more_tokens()?;
     Ok(statement)
 }
 
 /// Parses a series of statements separated by semicolons
 pub fn parse_statements(tokens_slice: &[Token]) -> Result<Vec<Statement>, RuleError> {
     let mut tokens = Tokens::new(tokens_slice);
-    let statements = try!(Statements::parse(&mut tokens));
-    try!(tokens.expect_no_more_tokens());
+    let statements = Statements::parse(&mut tokens)?;
+    tokens.expect_no_more_tokens()?;
     Ok(statements)
 }

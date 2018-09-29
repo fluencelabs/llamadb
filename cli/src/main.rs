@@ -125,7 +125,7 @@ fn load_testdata(out: &mut Write, db: &mut llamadb::tempdb::TempDb) -> Result<()
     let statements = llamadb::sqlsyntax::parse_statements(test_data);
 
     for statement in statements {
-        try!(execute_statement(out, db, statement));
+        execute_statement(out, db, statement)?;
     }
 
     Ok(())

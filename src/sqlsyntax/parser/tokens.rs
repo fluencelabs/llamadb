@@ -3,7 +3,7 @@ use super::{RuleError, RuleResult};
 
 #[derive(Copy, Clone)]
 pub struct Tokens<'a> {
-    tokens: &'a [Token]
+    tokens: &'a [Token],
 }
 
 impl<'a> Tokens<'a> {
@@ -16,9 +16,7 @@ impl<'a> Tokens<'a> {
     }
 
     pub fn new(tokens: &'a [Token]) -> Tokens<'a> {
-        Tokens {
-            tokens: tokens
-        }
+        Tokens { tokens }
     }
 
     pub fn expecting(&self, expecting_message: &'static str) -> RuleError {
@@ -33,9 +31,16 @@ impl<'a> Tokens<'a> {
         }
     }
 
-    pub fn pop_token_expecting(&mut self, token: &Token, expecting_message: &'static str) -> RuleResult<()> {
-        if self.pop_if_token(token) { Ok(()) }
-        else { Err(self.expecting(expecting_message)) }
+    pub fn pop_token_expecting(
+        &mut self,
+        token: &Token,
+        expecting_message: &'static str,
+    ) -> RuleResult<()> {
+        if self.pop_if_token(token) {
+            Ok(())
+        } else {
+            Err(self.expecting(expecting_message))
+        }
     }
 
     pub fn pop_if_token(&mut self, token: &Token) -> bool {

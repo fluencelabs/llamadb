@@ -1,21 +1,22 @@
-use columnvalueops::{ColumnValueOps, ColumnValueOpsExt};
 use super::super::sexpression::AggregateOp;
+use columnvalueops::{ColumnValueOps, ColumnValueOpsExt};
 
 pub trait AggregateFunction<ColumnValue> {
-    fn feed(&mut self, value: ColumnValue);
+    fn feed(&mut self, value: ColumnValue) -> Result<(), String>;
     fn finish(self: Box<Self>) -> ColumnValue;
 }
 
+#[derive(Debug)]
 struct Count {
-    count: u64
+    count: u64,
 }
 
-impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Count
-{
-    fn feed(&mut self, value: ColumnValue) {
+impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Count {
+    fn feed(&mut self, value: ColumnValue) -> Result<(), String> {
         if !value.is_null() {
             self.count += 1;
         }
+        Ok(())
     }
 
     fn finish(self: Box<Self>) -> ColumnValue {
@@ -23,17 +24,19 @@ impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Count
     }
 }
 
+#[derive(Debug)]
 struct Avg {
     sum: f64,
-    count: u64
+    count: u64,
 }
 
 impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Avg {
-    fn feed(&mut self, value: ColumnValue) {
+    fn feed(&mut self, value: ColumnValue) -> Result<(), String> {
         if !value.is_null() {
-            self.sum += value.to_f64().unwrap();
+            self.sum += value.to_f64()?;
             self.count += 1;
         }
+        Ok(())
     }
 
     fn finish(self: Box<Self>) -> ColumnValue {
@@ -47,15 +50,16 @@ impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Avg {
 
 struct Sum {
     sum: f64,
-    count: u64
+    count: u64,
 }
 
 impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Sum {
-    fn feed(&mut self, value: ColumnValue) {
+    fn feed(&mut self, value: ColumnValue) -> Result<(), String> {
         if !value.is_null() {
-            self.sum += value.to_f64().unwrap();
+            self.sum += value.to_f64()?;
             self.count += 1;
         }
+        Ok(())
     }
 
     fn finish(self: Box<Self>) -> ColumnValue {
@@ -68,21 +72,25 @@ impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Sum {
 }
 
 struct Min<ColumnValue> {
-    value: Option<ColumnValue>
+    value: Option<ColumnValue>,
 }
 
 impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Min<ColumnValue> {
-    fn feed(&mut self, value: ColumnValue) {
-        let set = !value.is_null() && if let Some(r) = self.value.as_ref() {
-            match value.compare(r) {
-                Some(-1) => true,
-                _ => false
-            }
-        } else {
-            true
-        };
+    fn feed(&mut self, value: ColumnValue) -> Result<(), String> {
+        let set = !value.is_null() &&
+            if let Some(r) = self.value.as_ref() {
+                match value.compare(r)? {
+                    Some(-1) => true,
+                    _ => false,
+                }
+            } else {
+                true
+            };
 
-        if set { self.value = Some(value); }
+        if set {
+            self.value = Some(value);
+        }
+        Ok(())
     }
 
     fn finish(self: Box<Self>) -> ColumnValue {
@@ -91,21 +99,25 @@ impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Min<ColumnV
 }
 
 struct Max<ColumnValue> {
-    value: Option<ColumnValue>
+    value: Option<ColumnValue>,
 }
 
 impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Max<ColumnValue> {
-    fn feed(&mut self, value: ColumnValue) {
-        let set = !value.is_null() && if let Some(r) = self.value.as_ref() {
-            match value.compare(r) {
-                Some(1) => true,
-                _ => false
-            }
-        } else {
-            true
-        };
+    fn feed(&mut self, value: ColumnValue) -> Result<(), String> {
+        let set = !value.is_null() &&
+            if let Some(r) = self.value.as_ref() {
+                match value.compare(r)? {
+                    Some(1) => true,
+                    _ => false,
+                }
+            } else {
+                true
+            };
 
-        if set { self.value = Some(value); }
+        if set {
+            self.value = Some(value);
+        }
+        Ok(())
     }
 
     fn finish(self: Box<Self>) -> ColumnValue {
@@ -113,14 +125,17 @@ impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Max<ColumnV
     }
 }
 
-pub fn get_aggregate_function<ColumnValue>(op: AggregateOp) -> Box<AggregateFunction<ColumnValue> + 'static>
-where ColumnValue: Sized + ColumnValueOps + 'static
+pub fn get_aggregate_function<ColumnValue>(
+    op: AggregateOp,
+) -> Box<AggregateFunction<ColumnValue> + 'static>
+where
+    ColumnValue: Sized + ColumnValueOps + 'static,
 {
     match op {
         AggregateOp::Count => Box::new(Count { count: 0 }),
         AggregateOp::Avg => Box::new(Avg { sum: 0.0, count: 0 }),
         AggregateOp::Sum => Box::new(Sum { sum: 0.0, count: 0 }),
         AggregateOp::Min => Box::new(Min { value: None }),
-        AggregateOp::Max => Box::new(Max { value: None })
+        AggregateOp::Max => Box::new(Max { value: None }),
     }
 }

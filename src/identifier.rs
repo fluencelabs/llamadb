@@ -22,17 +22,14 @@ use std::ops::Deref;
 /// lower-case representation. This process is known as normalization.
 #[derive(PartialEq, Eq, Clone)]
 pub struct Identifier {
-    value: String
+    pub value: String,
 }
 
 impl Identifier {
-    pub fn new(value: &str) -> Option<Identifier>
-    {
+    pub fn new(value: &str) -> Option<Identifier> {
         match normalize(value) {
-            Some(s) => Some(Identifier {
-                value: s
-            }),
-            None => None
+            Some(s) => Some(Identifier { value: s }),
+            None => None,
         }
     }
 }
@@ -40,7 +37,9 @@ impl Identifier {
 impl Deref for Identifier {
     type Target = str;
 
-    fn deref(&self) -> &str { &self.value }
+    fn deref(&self) -> &str {
+        &self.value
+    }
 }
 
 impl fmt::Display for Identifier {
@@ -56,21 +55,15 @@ impl fmt::Debug for Identifier {
 }
 
 fn normalize(value: &str) -> Option<String> {
-    use std::ascii::AsciiExt;
-
     fn is_valid(value: &str) -> bool {
         if let Some(c) = value.chars().nth(0) {
             // Test if the first character is not a digit or space
             match c {
                 '0'...'9' | ' ' => false,
-                _ => {
-                    value.chars().all(|c| {
-                        match c {
-                            'a'...'z' | 'A'...'Z' | '0'...'9' | '_' | ' ' => true,
-                            _ => false
-                        }
-                    })
-                }
+                _ => value.chars().all(|c| match c {
+                    'a'...'z' | 'A'...'Z' | '0'...'9' | '_' | ' ' => true,
+                    _ => false,
+                }),
             }
         } else {
             false
@@ -78,9 +71,7 @@ fn normalize(value: &str) -> Option<String> {
     }
 
     if is_valid(value) {
-        Some(value.chars().map(|c| {
-            c.to_ascii_lowercase()
-        }).collect())
+        Some(value.chars().map(|c| c.to_ascii_lowercase()).collect())
     } else {
         None
     }

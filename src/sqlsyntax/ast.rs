@@ -1,9 +1,9 @@
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum UnaryOp {
-    Negate
+    Negate,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum BinaryOp {
     Equal,
     NotEqual,
@@ -22,7 +22,7 @@ pub enum BinaryOp {
     Concatenate,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
     Ident(String),
     IdentMember(String, String),
@@ -30,110 +30,120 @@ pub enum Expression {
     Number(String),
     Null,
     /// name(argument1, argument2, argument3...)
-    FunctionCall { name: String, arguments: Vec<Expression> },
+    FunctionCall {
+        name: String,
+        arguments: Vec<Expression>,
+    },
     /// name(*)
-    FunctionCallAggregateAll { name: String },
+    FunctionCallAggregateAll {
+        name: String,
+    },
     UnaryOp {
         expr: Box<Expression>,
-        op: UnaryOp
+        op: UnaryOp,
     },
     /// lhs op rhs
     BinaryOp {
         lhs: Box<Expression>,
         rhs: Box<Expression>,
-        op: BinaryOp
+        op: BinaryOp,
     },
-    Subquery(Box<SelectStatement>)
+    Subquery(Box<SelectStatement>),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Table {
     pub database_name: Option<String>,
-    pub table_name: String
+    pub table_name: String,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TableOrSubquery {
     Subquery {
         subquery: Box<SelectStatement>,
-        alias: String
+        alias: String,
     },
     Table {
         table: Table,
-        alias: Option<String>
-    }
+        alias: Option<String>,
+    },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum SelectColumn {
     AllColumns,
     Expr {
         expr: Expression,
-        alias: Option<String>
-    }
+        alias: Option<String>,
+    },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct SelectStatement {
     pub result_columns: Vec<SelectColumn>,
     pub from: From,
     pub where_expr: Option<Expression>,
     pub group_by: Vec<Expression>,
     pub having: Option<Expression>,
-    pub order_by: Vec<OrderingTerm>
+    pub order_by: Vec<OrderingTerm>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum From {
     Cross(Vec<TableOrSubquery>),
     Join {
         table: TableOrSubquery,
-        joins: Vec<Join>
-    }
+        joins: Vec<Join>,
+    },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum JoinOperator {
     Left,
-    Inner
+    Inner,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Join {
     pub operator: JoinOperator,
     pub table: TableOrSubquery,
-    pub on: Expression
+    pub on: Expression,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Order {
     Ascending,
-    Descending
+    Descending,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct OrderingTerm {
     pub expr: Expression,
-    pub order: Order
+    pub order: Order,
 }
 
 #[derive(Debug)]
 pub struct InsertStatement {
+    /// Table for inserting
     pub table: Table,
+
+    /// Column names for filling when inserting
     pub into_columns: Option<Vec<String>>,
-    pub source: InsertSource
+
+    /// New records for inserting.
+    pub source: InsertSource,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum InsertSource {
     Values(Vec<Vec<Expression>>),
-    Select(Box<SelectStatement>)
+    Select(Box<SelectStatement>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct CreateTableColumnConstraint {
     pub name: Option<String>,
-    pub constraint: CreateTableColumnConstraintType
+    pub constraint: CreateTableColumnConstraintType,
 }
 
 #[derive(Debug, PartialEq)]
@@ -143,11 +153,11 @@ pub enum CreateTableColumnConstraintType {
     Nullable,
     ForeignKey {
         table: Table,
-        columns: Option<Vec<String>>
-    }
+        columns: Option<Vec<String>>,
+    },
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct CreateTableColumn {
     pub column_name: String,
     pub type_name: String,
@@ -156,23 +166,65 @@ pub struct CreateTableColumn {
     /// * Some(None) if dynamic array: type[]
     /// * Some(Some(_)) if fixed array: type[SIZE]
     pub type_array_size: Option<Option<String>>,
-    pub constraints: Vec<CreateTableColumnConstraint>
+    pub constraints: Vec<CreateTableColumnConstraint>,
 }
 
 #[derive(Debug)]
 pub struct CreateTableStatement {
     pub table: Table,
-    pub columns: Vec<CreateTableColumn>
+    pub columns: Vec<CreateTableColumn>,
 }
 
 #[derive(Debug)]
 pub enum CreateStatement {
-    Table(CreateTableStatement)
+    Table(CreateTableStatement),
+}
+
+#[derive(Debug, Clone)]
+pub struct DeleteStatement {
+    /// Table for deleting row.
+    pub table: TableOrSubquery,
+    /// 'Where' condition
+    pub where_expr: Option<Expression>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TruncateStatement {
+    /// Table for clearing.
+    pub table: Table,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropTableStatement {
+    /// Table for destruction.
+    pub table: Table,
 }
 
 #[derive(Debug)]
 pub enum ExplainStatement {
-    Select(SelectStatement)
+    Select(SelectStatement),
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdateStatement {
+    /// Table for update.
+    pub table: TableOrSubquery,
+
+    /// Column names and value for updating.
+    /// Representation for `SET col1 = val1, col2 = val2, ...` in update statement.
+    pub update: Vec<UpdateField>, // tood change to Vec<UpdateField>
+
+    /// 'Where' conditions.
+    pub where_expr: Option<Expression>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UpdateField {
+    /// Column name to assignment.
+    pub column_name: String,
+
+    /// New record for updating.
+    pub new_value: Expression,
 }
 
 #[derive(Debug)]
@@ -180,5 +232,9 @@ pub enum Statement {
     Select(SelectStatement),
     Insert(InsertStatement),
     Create(CreateStatement),
-    Explain(ExplainStatement)
+    Drop(DropTableStatement),
+    Delete(DeleteStatement),
+    Truncate(TruncateStatement),
+    Explain(ExplainStatement),
+    Update(UpdateStatement),
 }

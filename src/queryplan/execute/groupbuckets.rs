@@ -1,19 +1,20 @@
 use databasestorage::Group;
+use databasestorage::RawRow;
 use std;
 use std::borrow::Cow;
 use std::cmp::Eq;
+use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::IntoIterator;
-use std::collections::HashMap;
 
 pub struct GroupBuckets<ColumnValue: Clone + Eq + Hash + 'static> {
-    buckets: HashMap<Box<[ColumnValue]>, GroupBucket<ColumnValue>>
+    buckets: HashMap<Box<[ColumnValue]>, GroupBucket<ColumnValue>>,
 }
 
 impl<ColumnValue: Clone + Eq + Hash + 'static> GroupBuckets<ColumnValue> {
     pub fn new() -> GroupBuckets<ColumnValue> {
         GroupBuckets {
-            buckets: HashMap::new()
+            buckets: HashMap::new(),
         }
     }
 
@@ -23,9 +24,7 @@ impl<ColumnValue: Clone + Eq + Hash + 'static> GroupBuckets<ColumnValue> {
             return;
         }
 
-        let bucket = GroupBucket {
-            rows: vec![row]
-        };
+        let bucket = GroupBucket { rows: vec![row] };
 
         self.buckets.insert(key, bucket);
     }
@@ -37,13 +36,13 @@ impl<ColumnValue: Clone + Eq + Hash + 'static> IntoIterator for GroupBuckets<Col
 
     fn into_iter(self) -> IntoIter<ColumnValue> {
         IntoIter {
-            i: self.buckets.into_iter()
+            i: self.buckets.into_iter(),
         }
     }
 }
 
 pub struct IntoIter<ColumnValue: Clone + Eq + Hash + 'static> {
-    i: std::collections::hash_map::IntoIter<Box<[ColumnValue]>, GroupBucket<ColumnValue>>
+    i: std::collections::hash_map::IntoIter<Box<[ColumnValue]>, GroupBucket<ColumnValue>>,
 }
 
 impl<ColumnValue: Clone + Eq + Hash + 'static> Iterator for IntoIter<ColumnValue> {
@@ -55,28 +54,32 @@ impl<ColumnValue: Clone + Eq + Hash + 'static> Iterator for IntoIter<ColumnValue
 }
 
 pub struct GroupBucket<ColumnValue: Clone + Eq + Hash + 'static> {
-    rows: Vec<Box<[ColumnValue]>>
+    rows: Vec<Box<[ColumnValue]>>,
 }
 
 impl<ColumnValue: Clone + Eq + Hash + 'static> Group for GroupBucket<ColumnValue> {
     type ColumnValue = ColumnValue;
 
-    fn get_any_row<'b>(&'b self) -> Option<Cow<'b, [ColumnValue]>> {
-        use std::borrow::IntoCow;
+    fn get_any_row(&self) -> Option<Cow<[ColumnValue]>> {
+        self.rows.iter().nth(0).map(|r| Cow::from(r.as_ref()))
+    }
 
-        self.rows.iter().nth(0).map(|r| r.into_cow())
+    fn get_any_raw_row(&self) -> Option<RawRow<<Self as Group>::ColumnValue>> {
+        panic!("GroupBucket can't get row as raw bytes!")
     }
 
     fn count(&self) -> u64 {
         self.rows.len() as u64
     }
 
-    fn iter<'a>(&'a self) -> Box<Iterator<Item=Cow<'a, [ColumnValue]>> + 'a> {
+    fn iter<'a>(&'a self) -> Box<Iterator<Item = Cow<'a, [ColumnValue]>> + 'a> {
         Box::new(self.rows.iter().map(|row| {
-            use std::borrow::IntoCow;
-
             let row_ref: &[ColumnValue] = &row;
-            row_ref.into_cow()
+            row_ref.into()
         }))
+    }
+
+    fn iter_raw<'a>(&'a self) -> Box<Iterator<Item = RawRow<<Self as Group>::ColumnValue>> + 'a> {
+        panic!("GroupBucket can't get iterator of raw bytes!")
     }
 }
