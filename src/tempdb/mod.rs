@@ -49,7 +49,7 @@ struct ScanGroup<'a> {
 impl<'a> Group for ScanGroup<'a> {
     type ColumnValue = Variant;
 
-    fn get_any_row<'b>(&'b self) -> Option<Cow<'b, [Variant]>> {
+    fn get_any_row(&self) -> Option<Cow<[Variant]>> {
         self.iter().nth(0)
     }
 
