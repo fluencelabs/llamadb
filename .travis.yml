@@ -1,9 +1,12 @@
 language: rust
 
 rust:
-  - nightly
+  - stable
+
+before_script:
+  - rustup component add rustfmt-preview
 
 script:
-  - cargo test -v
-  - cd cli
+  - cargo fmt --all -- --check
   - cargo build -v
+  - cargo test -v
