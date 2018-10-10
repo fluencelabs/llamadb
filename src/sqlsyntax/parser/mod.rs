@@ -10,6 +10,7 @@ mod tokens;
 use self::tokens::Tokens;
 use std::error::Error;
 
+#[derive(PartialEq)]
 pub enum RuleError {
     ExpectingFirst(&'static str, Option<Token>),
     Expecting(&'static str, Option<Token>)

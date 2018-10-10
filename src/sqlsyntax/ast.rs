@@ -124,13 +124,13 @@ pub struct InsertStatement {
     pub source: InsertSource
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum InsertSource {
     Values(Vec<Vec<Expression>>),
     Select(Box<SelectStatement>)
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct CreateTableColumnConstraint {
     pub name: Option<String>,
     pub constraint: CreateTableColumnConstraintType
@@ -147,7 +147,7 @@ pub enum CreateTableColumnConstraintType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct CreateTableColumn {
     pub column_name: String,
     pub type_name: String,

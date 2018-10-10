@@ -81,6 +81,7 @@ impl ColumnValueOps for Variant {
         }
     }
 
+    // todo add informative Error instead ()
     fn from_bytes(dbtype: DbType, bytes: Cow<[u8]>) -> Result<Variant, ()> {
         match dbtype {
             DbType::Null => Ok(Variant::Null),
