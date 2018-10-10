@@ -1,7 +1,7 @@
 # LlamaDB
 
-### Fair warning: this project is not maintained. 
-Do not use this for anything important, like... for anything. This is a database I wrote for the fun of it. It will never be production-ready.
+### Fair warning:
+Do not use this for anything important. This is a database I wrote for the fun of it.
 
 LlamaDB is a simple SQL database, written entirely in the Rust programming language.
 
@@ -20,7 +20,7 @@ To exit the CLI, press `Ctrl+D`.
 For a quick rundown of implemented features, see the [Usage guide](Usage.md).
 
 See the issue tracker for unimplemented features and bugs:
-<https://github.com/nukep/llamadb/issues>
+<https://github.com/fluencelabs/llamadb/issues>
 
 
 ## About

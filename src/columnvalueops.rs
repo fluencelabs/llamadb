@@ -1,5 +1,5 @@
-use types::DbType;
 use std::borrow::Cow;
+use types::DbType;
 
 pub trait ColumnValueOps: Sized {
     fn from_string_literal(s: Cow<str>) -> Result<Self, Cow<str>>;
@@ -38,13 +38,15 @@ pub trait ColumnValueOps: Sized {
 }
 
 pub trait ColumnValueOpsExt: ColumnValueOps {
-    fn null() -> Self { ColumnValueOps::from_3vl(0) }
+    fn null() -> Self {
+        ColumnValueOps::from_3vl(0)
+    }
 
     fn equals(&self, rhs: &Self) -> Self {
         ColumnValueOps::from_3vl(match self.compare(rhs) {
             None => 0,
             Some(0) => 1,
-            Some(_) => -1
+            Some(_) => -1,
         })
     }
 
@@ -52,7 +54,7 @@ pub trait ColumnValueOpsExt: ColumnValueOps {
         ColumnValueOps::from_3vl(match self.compare(rhs) {
             None => 0,
             Some(0) => -1,
-            Some(_) => 1
+            Some(_) => 1,
         })
     }
 
@@ -60,7 +62,7 @@ pub trait ColumnValueOpsExt: ColumnValueOps {
         ColumnValueOps::from_3vl(match self.compare(rhs) {
             None => 0,
             Some(-1) => 1,
-            Some(_) => -1
+            Some(_) => -1,
         })
     }
 
@@ -68,7 +70,7 @@ pub trait ColumnValueOpsExt: ColumnValueOps {
         ColumnValueOps::from_3vl(match self.compare(rhs) {
             None => 0,
             Some(1) => 1,
-            Some(_) => -1
+            Some(_) => -1,
         })
     }
 
@@ -76,7 +78,7 @@ pub trait ColumnValueOpsExt: ColumnValueOps {
         ColumnValueOps::from_3vl(match self.compare(rhs) {
             None => 0,
             Some(-1) | Some(0) => 1,
-            Some(_) => -1
+            Some(_) => -1,
         })
     }
 
@@ -84,19 +86,23 @@ pub trait ColumnValueOpsExt: ColumnValueOps {
         ColumnValueOps::from_3vl(match self.compare(rhs) {
             None => 0,
             Some(0) | Some(1) => 1,
-            Some(_) => -1
+            Some(_) => -1,
         })
     }
 
-    fn is_null(&self) -> bool { self.to_3vl() == 0 }
+    fn is_null(&self) -> bool {
+        self.to_3vl() == 0
+    }
 
-    fn tests_true(&self) -> bool { self.to_3vl() == 1 }
+    fn tests_true(&self) -> bool {
+        self.to_3vl() == 1
+    }
 
     fn not(&self) -> Self {
         ColumnValueOps::from_3vl(-self.to_3vl())
     }
 
-    fn and(&self, rhs: &Self) -> Self{
+    fn and(&self, rhs: &Self) -> Self {
         let (l, r) = (self.to_3vl(), rhs.to_3vl());
 
         ColumnValueOps::from_3vl(if l < r { l } else { r })
@@ -109,4 +115,4 @@ pub trait ColumnValueOpsExt: ColumnValueOps {
     }
 }
 
-impl<T: ColumnValueOps> ColumnValueOpsExt for T { }
+impl<T: ColumnValueOps> ColumnValueOpsExt for T {}

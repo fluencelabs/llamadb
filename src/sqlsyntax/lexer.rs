@@ -3,31 +3,68 @@
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     // Words
-    Select, From, Where, Group, Having, By, Limit,
+    Select,
+    From,
+    Where,
+    Group,
+    Having,
+    By,
+    Limit,
     Distinct,
-    Order, Asc, Desc,
-    As, Join, Inner, Outer, Left, Right, On,
-    Insert, Into, Values, Update, Delete,
-    Create, Table, Index, Constraint,
-    Primary, Key, Unique, References,
-    And, Or,
-    Between, In,
-    Is, Not, Null,
+    Order,
+    Asc,
+    Desc,
+    As,
+    Join,
+    Inner,
+    Outer,
+    Left,
+    Right,
+    On,
+    Insert,
+    Into,
+    Values,
+    Update,
+    Delete,
+    Create,
+    Table,
+    Index,
+    Constraint,
+    Primary,
+    Key,
+    Unique,
+    References,
+    And,
+    Or,
+    Between,
+    In,
+    Is,
+    Not,
+    Null,
     Explain,
 
     // Non-letter tokens
     Equal,
     NotEqual,
-    LessThan, LessThanOrEqual,
-    GreaterThan, GreaterThanOrEqual,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
 
-    Plus, Minus,
+    Plus,
+    Minus,
 
-    LeftParen, RightParen,
-    LeftBracket, RightBracket,
-    Dot, Comma, Semicolon,
+    LeftParen,
+    RightParen,
+    LeftBracket,
+    RightBracket,
+    Dot,
+    Comma,
+    Semicolon,
 
-    Ampersand, Pipe, ForwardSlash,
+    Ampersand,
+    Pipe,
+    ForwardSlash,
 
     /// ||, the concatenate operator
     DoublePipe,
@@ -41,7 +78,7 @@ pub enum Token {
     // Tokens with values
     Number(String),
     Ident(String),
-    StringLiteral(String)
+    StringLiteral(String),
 }
 
 fn character_to_token(c: char) -> Option<Token> {
@@ -65,7 +102,7 @@ fn character_to_token(c: char) -> Option<Token> {
         '*' => Asterisk,
         '/' => ForwardSlash,
         '?' => PreparedStatementPlaceholder,
-        _ => return None
+        _ => return None,
     })
 }
 
@@ -73,7 +110,7 @@ fn word_to_token(word: String) -> Token {
     use self::Token::*;
 
     // Make all letters lowercase for comparison
-    let word_cmp: String = word.chars().flat_map( |c| c.to_lowercase() ).collect();
+    let word_cmp: String = word.chars().flat_map(|c| c.to_lowercase()).collect();
 
     match word_cmp.as_ref() {
         "select" => Select,
@@ -115,7 +152,7 @@ fn word_to_token(word: String) -> Token {
         "not" => Not,
         "null" => Null,
         "explain" => Explain,
-        _ => Ident(word)
+        _ => Ident(word),
     }
 }
 
@@ -123,19 +160,27 @@ enum LexerState {
     NoState,
     Word,
     Backtick,
-    Apostrophe { escaping: bool },
-    Number { decimal: bool },
+    Apostrophe {
+        escaping: bool,
+    },
+    Number {
+        decimal: bool,
+    },
     /// Disambiguate an operator sequence.
-    OperatorDisambiguate { first: char },
+    OperatorDisambiguate {
+        first: char,
+    },
     LineComment,
-    BlockComment { was_prev_char_asterisk: bool }
+    BlockComment {
+        was_prev_char_asterisk: bool,
+    },
 }
 
 pub struct Lexer {
     pub tokens: Vec<Token>,
 
     state: LexerState,
-    string_buffer: String
+    string_buffer: String,
 }
 
 impl Lexer {
@@ -143,14 +188,14 @@ impl Lexer {
         Lexer {
             tokens: Vec::new(),
             state: LexerState::NoState,
-            string_buffer: String::new()
+            string_buffer: String::new(),
         }
     }
 
     pub fn is_no_state(&self) -> bool {
         match self.state {
             LexerState::NoState => true,
-            _ => false
+            _ => false,
         }
     }
 
@@ -160,9 +205,7 @@ impl Lexer {
                 self.string_buffer.push(c);
                 Ok(LexerState::Word)
             },
-            '`' => {
-                Ok(LexerState::Backtick)
-            }
+            '`' => Ok(LexerState::Backtick),
             '\'' => {
                 // string literal
                 Ok(LexerState::Apostrophe { escaping: false })
@@ -179,9 +222,8 @@ impl Lexer {
                 use self::Token::*;
 
                 match character_to_token(c) {
-                    Some(LessThan) | Some(GreaterThan) | Some(Minus) | Some(Pipe) | Some(ForwardSlash) => {
-                        Ok(LexerState::OperatorDisambiguate { first: c })
-                    },
+                    Some(LessThan) | Some(GreaterThan) | Some(Minus) | Some(Pipe) |
+                    Some(ForwardSlash) => Ok(LexerState::OperatorDisambiguate { first: c }),
                     Some(token) => {
                         self.tokens.push(token);
                         Ok(LexerState::NoState)
@@ -189,9 +231,9 @@ impl Lexer {
                     None => {
                         // unknown character
                         Err(c)
-                    }
+                    },
                 }
-            }
+            },
         }
     }
 
@@ -202,31 +244,27 @@ impl Lexer {
 
     pub fn feed_character(&mut self, c: Option<char>) {
         self.state = match self.state {
-            LexerState::NoState => {
-                match c {
-                    Some(c) => self.no_state(c).unwrap(),
-                    None => LexerState::NoState
-                }
+            LexerState::NoState => match c {
+                Some(c) => self.no_state(c).unwrap(),
+                None => LexerState::NoState,
             },
-            LexerState::Word => {
-                match c {
-                    Some(c) => match c {
-                        'a'...'z' | 'A'...'Z' | '_' | '0'...'9' => {
-                            self.string_buffer.push(c);
-                            LexerState::Word
-                        }
-                        c => {
-                            let buffer = self.move_string_buffer();
-                            self.tokens.push(word_to_token(buffer));
-                            self.no_state(c).unwrap()
-                        }
+            LexerState::Word => match c {
+                Some(c) => match c {
+                    'a'...'z' | 'A'...'Z' | '_' | '0'...'9' => {
+                        self.string_buffer.push(c);
+                        LexerState::Word
                     },
-                    None => {
+                    c => {
                         let buffer = self.move_string_buffer();
                         self.tokens.push(word_to_token(buffer));
-                        LexerState::NoState
-                    }
-                }
+                        self.no_state(c).unwrap()
+                    },
+                },
+                None => {
+                    let buffer = self.move_string_buffer();
+                    self.tokens.push(word_to_token(buffer));
+                    LexerState::NoState
+                },
             },
             LexerState::Backtick => {
                 match c {
@@ -242,7 +280,7 @@ impl Lexer {
                     None => {
                         // error: backtick did not finish
                         unimplemented!()
-                    }
+                    },
                 }
             },
             LexerState::Apostrophe { escaping } => {
@@ -261,7 +299,7 @@ impl Lexer {
                         (true, _) | _ => {
                             self.string_buffer.push(c);
                             LexerState::Apostrophe { escaping: false }
-                        }
+                        },
                     }
                 } else {
                     // error: apostrophe did not finish
@@ -284,7 +322,7 @@ impl Lexer {
                             let buffer = self.move_string_buffer();
                             self.tokens.push(Token::Number(buffer));
                             self.no_state(c).unwrap()
-                        }
+                        },
                     }
                 } else {
                     let buffer = self.move_string_buffer();
@@ -313,40 +351,41 @@ impl Lexer {
                             self.tokens.push(DoublePipe);
                             LexerState::NoState
                         },
-                        ('-', '-') => {
-                            LexerState::LineComment
-                        },
-                        ('/', '*') => {
-                            LexerState::BlockComment { was_prev_char_asterisk: false }
+                        ('-', '-') => LexerState::LineComment,
+                        ('/', '*') => LexerState::BlockComment {
+                            was_prev_char_asterisk: false,
                         },
                         _ => {
                             self.tokens.push(character_to_token(first).unwrap());
                             self.no_state(c).unwrap()
-                        }
+                        },
                     }
                 } else {
                     self.tokens.push(character_to_token(first).unwrap());
                     LexerState::NoState
                 }
             },
-            LexerState::LineComment => {
-                match c {
-                    Some('\n') => LexerState::NoState,
-                    _ => LexerState::LineComment
-                }
+            LexerState::LineComment => match c {
+                Some('\n') => LexerState::NoState,
+                _ => LexerState::LineComment,
             },
-            LexerState::BlockComment { was_prev_char_asterisk } => {
+            LexerState::BlockComment {
+                was_prev_char_asterisk,
+            } => {
                 if was_prev_char_asterisk && c == Some('/') {
                     LexerState::NoState
                 } else {
-                    LexerState::BlockComment { was_prev_char_asterisk: c == Some('*') }
+                    LexerState::BlockComment {
+                        was_prev_char_asterisk: c == Some('*'),
+                    }
                 }
-            }
+            },
         };
     }
 
     pub fn feed_characters<I>(&mut self, iter: I)
-    where I: Iterator<Item=char>
+    where
+        I: Iterator<Item = char>,
     {
         for c in iter {
             self.feed_character(Some(c));
@@ -395,11 +434,23 @@ mod test {
 
         assert_eq!(parse("12345"), vec![number("12345")]);
         assert_eq!(parse("0.25"), vec![number("0.25")]);
-        assert_eq!(parse("0.25 + -0.25"), vec![number("0.25"), Plus, Minus, number("0.25")]);
-        assert_eq!(parse("-0.25 + 0.25"), vec![Minus, number("0.25"), Plus, number("0.25")]);
-        assert_eq!(parse("- 0.25 - -0.25"), vec![Minus, number("0.25"), Minus, Minus, number("0.25")]);
+        assert_eq!(
+            parse("0.25 + -0.25"),
+            vec![number("0.25"), Plus, Minus, number("0.25")]
+        );
+        assert_eq!(
+            parse("-0.25 + 0.25"),
+            vec![Minus, number("0.25"), Plus, number("0.25")]
+        );
+        assert_eq!(
+            parse("- 0.25 - -0.25"),
+            vec![Minus, number("0.25"), Minus, Minus, number("0.25")]
+        );
         assert_eq!(parse("- 0.25 --0.25"), vec![Minus, number("0.25")]);
-        assert_eq!(parse("0.25 -0.25"), vec![number("0.25"), Minus, number("0.25")]);
+        assert_eq!(
+            parse("0.25 -0.25"),
+            vec![number("0.25"), Minus, number("0.25")]
+        );
     }
 
     #[test]
@@ -428,27 +479,71 @@ mod test {
         GROUP BY departmentId;
         ";
 
-        assert_eq!(parse(query), vec![
-            Select, id("d"), Dot, id("id"), id("departmentId"), Comma, id("count"), LeftParen, id("e"), Dot, id("id"), RightParen, id("employeeCount"),
-            From, id("department"), id("d"),
-            Left, Join, id("employee"), id("e"), On, id("e"), Dot, id("departmentId"), Equal, id("d"), Dot, id("id"),
-            Group, By, id("departmentId"), Semicolon
-        ]);
+        assert_eq!(
+            parse(query),
+            vec![
+                Select,
+                id("d"),
+                Dot,
+                id("id"),
+                id("departmentId"),
+                Comma,
+                id("count"),
+                LeftParen,
+                id("e"),
+                Dot,
+                id("id"),
+                RightParen,
+                id("employeeCount"),
+                From,
+                id("department"),
+                id("d"),
+                Left,
+                Join,
+                id("employee"),
+                id("e"),
+                On,
+                id("e"),
+                Dot,
+                id("departmentId"),
+                Equal,
+                id("d"),
+                Dot,
+                id("id"),
+                Group,
+                By,
+                id("departmentId"),
+                Semicolon
+            ]
+        );
     }
 
     #[test]
     fn test_sql_lexer_operators() {
         use super::Token::*;
 
-        assert_eq!(parse("> = >=< =><"),
+        assert_eq!(
+            parse("> = >=< =><"),
             vec![
-                GreaterThan, Equal, GreaterThanOrEqual, LessThan, Equal, GreaterThan, LessThan
+                GreaterThan,
+                Equal,
+                GreaterThanOrEqual,
+                LessThan,
+                Equal,
+                GreaterThan,
+                LessThan
             ]
         );
 
-        assert_eq!(parse(" ><>> >< >"),
+        assert_eq!(
+            parse(" ><>> >< >"),
             vec![
-                GreaterThan, NotEqual, GreaterThan, GreaterThan, LessThan, GreaterThan
+                GreaterThan,
+                NotEqual,
+                GreaterThan,
+                GreaterThan,
+                LessThan,
+                GreaterThan
             ]
         );
     }
@@ -457,9 +552,10 @@ mod test {
     fn test_sql_lexer_blockcomment() {
         use super::Token::*;
 
-        assert_eq!(parse("hello/*/a/**/,/*there, */world"), vec![
-            id("hello"), Comma, id("world")
-        ]);
+        assert_eq!(
+            parse("hello/*/a/**/,/*there, */world"),
+            vec![id("hello"), Comma, id("world")]
+        );
 
         assert_eq!(parse("/ */"), vec![ForwardSlash, Asterisk, ForwardSlash]);
 

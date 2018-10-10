@@ -3,7 +3,13 @@ language: rust
 rust:
   - nightly
 
+cache: cargo
+
+before_script:
+  - rustup component add rustfmt-preview --toolchain nightly
+
 script:
-  - cargo test -v
-  - cd cli
+#  local rustfmt and rustfmt from travis force different format, I can't fix that(
+#  - cargo fmt --all -- --check -v
   - cargo build -v
+  - cargo test -v

@@ -1,9 +1,9 @@
 use columnvalueops::ColumnValueOps;
 use identifier::Identifier;
-use types::DbType;
-use std::fmt;
 use std::cmp::Eq;
+use std::fmt;
 use std::hash::Hash;
+use types::DbType;
 
 /// A read-only interface to information about the database schema.
 pub trait DatabaseInfo {
@@ -22,10 +22,11 @@ pub trait TableInfo {
     fn find_column_by_name(&self, name: &Identifier) -> Option<&Self::Column>;
 
     fn get_column_names(&self) -> Vec<Identifier> {
-        (0..self.get_column_count()).map(|i| {
-            let column = self.find_column_by_offset(i).unwrap();
-            column.get_name().clone()
-        }).collect()
+        (0..self.get_column_count())
+            .map(|i| {
+                let column = self.find_column_by_offset(i).unwrap();
+                column.get_name().clone()
+            }).collect()
     }
 }
 
