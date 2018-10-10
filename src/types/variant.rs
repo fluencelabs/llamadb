@@ -81,6 +81,7 @@ impl ColumnValueOps for Variant {
         }
     }
 
+    // todo add informative Error instead ()
     fn from_bytes(dbtype: DbType, bytes: Cow<[u8]>) -> Result<Variant, ()> {
         match dbtype {
             DbType::Null => Ok(Variant::Null),
@@ -190,6 +191,37 @@ impl ColumnValueOps for Variant {
         }
     }
 
+    // None: self or rhs is NULL, or comparison is otherwise invalid
+    // -1: self < rhs
+    // 0: self == rhs
+    // 1: self > rhs
+    fn compare(&self, rhs: &Self) -> Option<i8> {
+        let dbtype = self.get_dbtype();
+        if let Some(r) = rhs.clone().cast(dbtype) {
+            match (self, &r) {
+                (&Variant::Null, _) | (_, &Variant::Null) => None,
+                (&Variant::UnsignedInteger(l), &Variant::UnsignedInteger(r)) => {
+                    Some(if l < r { -1 } else if l > r { 1 } else { 0 })
+                },
+                (&Variant::SignedInteger(l), &Variant::SignedInteger(r)) => {
+                    Some(if l < r { -1 } else if l > r { 1 } else { 0 })
+                },
+                (&Variant::Float(l), &Variant::Float(r)) => {
+                    Some(if l < r { -1 } else if l > r { 1 } else { 0 })
+                },
+                (&Variant::Bytes(ref l), &Variant::Bytes(ref r)) => {
+                    Some(if l < r { -1 } else if l > r { 1 } else { 0 })
+                },
+                (&Variant::StringLiteral(ref l), &Variant::StringLiteral(ref r)) => {
+                    Some(if l < r { -1 } else if l > r { 1 } else { 0 })
+                },
+                _ => unreachable!()
+            }
+        } else {
+            None
+        }
+    }
+
     fn cast(self, dbtype: DbType) -> Option<Self> {
         match (self, dbtype) {
             (e@Variant::Null, DbType::Null)
@@ -242,37 +274,6 @@ impl ColumnValueOps for Variant {
                 Some(Variant::UnsignedInteger(integer as u64))
             },
             _ => None
-        }
-    }
-
-    // None: self or rhs is NULL, or comparison is otherwise invalid
-    // -1: self < rhs
-    // 0: self == rhs
-    // 1: self > rhs
-    fn compare(&self, rhs: &Self) -> Option<i8> {
-        let dbtype = self.get_dbtype();
-        if let Some(r) = rhs.clone().cast(dbtype) {
-            match (self, &r) {
-                (&Variant::Null, _) | (_, &Variant::Null) => None,
-                (&Variant::UnsignedInteger(l), &Variant::UnsignedInteger(r)) => {
-                    Some(if l < r { -1 } else if l > r { 1 } else { 0 })
-                },
-                (&Variant::SignedInteger(l), &Variant::SignedInteger(r)) => {
-                    Some(if l < r { -1 } else if l > r { 1 } else { 0 })
-                },
-                (&Variant::Float(l), &Variant::Float(r)) => {
-                    Some(if l < r { -1 } else if l > r { 1 } else { 0 })
-                },
-                (&Variant::Bytes(ref l), &Variant::Bytes(ref r)) => {
-                    Some(if l < r { -1 } else if l > r { 1 } else { 0 })
-                },
-                (&Variant::StringLiteral(ref l), &Variant::StringLiteral(ref r)) => {
-                    Some(if l < r { -1 } else if l > r { 1 } else { 0 })
-                },
-                _ => unreachable!()
-            }
-        } else {
-            None
         }
     }
 

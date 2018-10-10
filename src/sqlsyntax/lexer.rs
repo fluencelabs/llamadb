@@ -273,7 +273,7 @@ impl Lexer {
                     match c {
                         '0'...'9' => {
                             self.string_buffer.push(c);
-                            LexerState::Number { decimal: decimal }
+                            LexerState::Number { decimal }
                         },
                         '.' if !decimal => {
                             // Add a decimal point. None has been added yet.
