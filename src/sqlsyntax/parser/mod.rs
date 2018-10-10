@@ -288,7 +288,7 @@ impl Expression {
 
                     try_notfirst!(tokens.pop_token_expecting(&Token::RightParen, ") after function arguments"));
 
-                    Ok(Expression::FunctionCall { name: ident, arguments: arguments })
+                    Ok(Expression::FunctionCall { name: ident, arguments })
                 }
             } else if tokens.pop_if_token(&Token::Dot) {
                 let ident2 = try_notfirst!(tokens.pop_ident_expecting("ident after ."));
@@ -537,7 +537,7 @@ impl Rule for InsertSource {
         if tokens.pop_if_token(&Token::Values) {
             let values = try_notfirst!(CommaDelimitedRule::<ParensCommaDelimitedRule<Expression>>::parse(tokens));
             Ok(InsertSource::Values(values))
-        } else if let Some(select) = try!(SelectStatement::parse_lookahead(tokens)) {
+        } else if let Some(select) = SelectStatement::parse_lookahead(tokens)? {
             Ok(InsertSource::Select(Box::new(select)))
         } else {
             Err(tokens.expecting("VALUES or SELECT"))
