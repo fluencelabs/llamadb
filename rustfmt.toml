@@ -1,3 +1,2 @@
-edition = "Edition2018"
 match_block_trailing_comma = true
 binop_separator = "Back"
