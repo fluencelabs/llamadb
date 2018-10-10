@@ -26,8 +26,7 @@ pub struct Identifier {
 }
 
 impl Identifier {
-    pub fn new(value: &str) -> Option<Identifier>
-    {
+    pub fn new(value: &str) -> Option<Identifier> {
         match normalize(value) {
             Some(s) => Some(Identifier {
                 value: s

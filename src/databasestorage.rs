@@ -15,7 +15,7 @@ pub trait Group {
 
     /// Returns any arbitrary row in the group.
     /// Returns None if the group contains no rows.
-    fn get_any_row<'a>(&'a self) -> Option<Cow<'a, [Self::ColumnValue]>>;
+    fn get_any_row(&self) -> Option<Cow<[Self::ColumnValue]>>;
     
     fn count(&self) -> u64;
 
