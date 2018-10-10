@@ -9,6 +9,7 @@ before_script:
   - rustup component add rustfmt-preview --toolchain nightly
 
 script:
-  - cargo build -v
+#  local rustfmt and rustfmt from travis force different format, I can't fix that(
   - cargo fmt --all -- --check -v
+  - cargo build -v
   - cargo test -v
