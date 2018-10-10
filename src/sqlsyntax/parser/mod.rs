@@ -8,6 +8,7 @@ use super::ast::*;
 
 mod tokens;
 use self::tokens::Tokens;
+use std::error::Error;
 
 pub enum RuleError {
     ExpectingFirst(&'static str, Option<Token>),
@@ -32,6 +33,8 @@ impl fmt::Debug for RuleError {
         write!(f, "{}", self)
     }
 }
+
+impl Error for RuleError { }
 
 pub type RuleResult<T> = Result<T, RuleError>;
 
