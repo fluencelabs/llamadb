@@ -7,6 +7,6 @@ before_script:
   - rustup component add rustfmt-preview --toolchain nightly
 
 script:
-  - cargo fmt --all -- --check -v
+  - cargo fmt -- --write-mode=diff
   - cargo build -v
   - cargo test -v
