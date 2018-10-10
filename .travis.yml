@@ -10,5 +10,5 @@ before_script:
 
 script:
   - cargo build -v
-  - cargo fmt -all -- --check -v
+  - cargo fmt --all -- --check -v
   - cargo test -v
