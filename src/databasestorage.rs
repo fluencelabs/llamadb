@@ -6,8 +6,10 @@ use std::hash::Hash;
 pub trait DatabaseStorage {
     type Info: DatabaseInfo;
 
-    fn scan_table<'a>(&'a self, table: &'a <Self::Info as DatabaseInfo>::Table)
-    -> Box<Group<ColumnValue=<Self::Info as DatabaseInfo>::ColumnValue> + 'a>;
+    fn scan_table<'a>(
+        &'a self,
+        table: &'a <Self::Info as DatabaseInfo>::Table,
+    ) -> Box<Group<ColumnValue = <Self::Info as DatabaseInfo>::ColumnValue> + 'a>;
 }
 
 pub trait Group {
@@ -16,8 +18,8 @@ pub trait Group {
     /// Returns any arbitrary row in the group.
     /// Returns None if the group contains no rows.
     fn get_any_row(&self) -> Option<Cow<[Self::ColumnValue]>>;
-    
+
     fn count(&self) -> u64;
 
-    fn iter<'a>(&'a self) -> Box<Iterator<Item=Cow<'a, [Self::ColumnValue]>> + 'a>;
+    fn iter<'a>(&'a self) -> Box<Iterator<Item = Cow<'a, [Self::ColumnValue]>> + 'a>;
 }

@@ -2,18 +2,18 @@ use databasestorage::Group;
 use std;
 use std::borrow::Cow;
 use std::cmp::Eq;
+use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::IntoIterator;
-use std::collections::HashMap;
 
 pub struct GroupBuckets<ColumnValue: Clone + Eq + Hash + 'static> {
-    buckets: HashMap<Box<[ColumnValue]>, GroupBucket<ColumnValue>>
+    buckets: HashMap<Box<[ColumnValue]>, GroupBucket<ColumnValue>>,
 }
 
 impl<ColumnValue: Clone + Eq + Hash + 'static> GroupBuckets<ColumnValue> {
     pub fn new() -> GroupBuckets<ColumnValue> {
         GroupBuckets {
-            buckets: HashMap::new()
+            buckets: HashMap::new(),
         }
     }
 
@@ -23,9 +23,7 @@ impl<ColumnValue: Clone + Eq + Hash + 'static> GroupBuckets<ColumnValue> {
             return;
         }
 
-        let bucket = GroupBucket {
-            rows: vec![row]
-        };
+        let bucket = GroupBucket { rows: vec![row] };
 
         self.buckets.insert(key, bucket);
     }
@@ -37,13 +35,13 @@ impl<ColumnValue: Clone + Eq + Hash + 'static> IntoIterator for GroupBuckets<Col
 
     fn into_iter(self) -> IntoIter<ColumnValue> {
         IntoIter {
-            i: self.buckets.into_iter()
+            i: self.buckets.into_iter(),
         }
     }
 }
 
 pub struct IntoIter<ColumnValue: Clone + Eq + Hash + 'static> {
-    i: std::collections::hash_map::IntoIter<Box<[ColumnValue]>, GroupBucket<ColumnValue>>
+    i: std::collections::hash_map::IntoIter<Box<[ColumnValue]>, GroupBucket<ColumnValue>>,
 }
 
 impl<ColumnValue: Clone + Eq + Hash + 'static> Iterator for IntoIter<ColumnValue> {
@@ -55,7 +53,7 @@ impl<ColumnValue: Clone + Eq + Hash + 'static> Iterator for IntoIter<ColumnValue
 }
 
 pub struct GroupBucket<ColumnValue: Clone + Eq + Hash + 'static> {
-    rows: Vec<Box<[ColumnValue]>>
+    rows: Vec<Box<[ColumnValue]>>,
 }
 
 impl<ColumnValue: Clone + Eq + Hash + 'static> Group for GroupBucket<ColumnValue> {
@@ -69,7 +67,7 @@ impl<ColumnValue: Clone + Eq + Hash + 'static> Group for GroupBucket<ColumnValue
         self.rows.len() as u64
     }
 
-    fn iter<'a>(&'a self) -> Box<Iterator<Item=Cow<'a, [ColumnValue]>> + 'a> {
+    fn iter<'a>(&'a self) -> Box<Iterator<Item = Cow<'a, [ColumnValue]>> + 'a> {
         Box::new(self.rows.iter().map(|row| {
             let row_ref: &[ColumnValue] = &row;
             row_ref.into()

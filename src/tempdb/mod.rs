@@ -7,18 +7,18 @@ use std::borrow::Cow;
 use std::collections::BTreeSet;
 
 use columnvalueops::{ColumnValueOps, ColumnValueOpsExt};
-use databaseinfo::{DatabaseInfo, TableInfo, ColumnInfo};
-use databasestorage::{Group, DatabaseStorage};
+use databaseinfo::{ColumnInfo, DatabaseInfo, TableInfo};
+use databasestorage::{DatabaseStorage, Group};
 use identifier::Identifier;
-use types::{DbType, Variant};
-use sqlsyntax::ast;
 use queryplan::{self, ExecuteQueryPlan, QueryPlan};
+use sqlsyntax::ast;
+use types::{DbType, Variant};
 
 mod table;
 use self::table::Table;
 
 pub struct TempDb {
-    tables: Vec<Table>
+    tables: Vec<Table>,
 }
 
 pub enum ExecuteStatementResponse<'a> {
@@ -26,9 +26,9 @@ pub enum ExecuteStatementResponse<'a> {
     Inserted(u64),
     Select {
         column_names: Box<[String]>,
-        rows: Box<Iterator<Item=Box<[Variant]>> + 'a>
+        rows: Box<Iterator<Item = Box<[Variant]>> + 'a>,
     },
-    Explain(String)
+    Explain(String),
 }
 
 pub type ExecuteStatementResult<'a> = Result<ExecuteStatementResponse<'a>, String>;
@@ -43,7 +43,7 @@ impl DatabaseInfo for TempDb {
 }
 
 struct ScanGroup<'a> {
-    table: &'a Table
+    table: &'a Table,
 }
 
 impl<'a> Group for ScanGroup<'a> {
@@ -57,7 +57,7 @@ impl<'a> Group for ScanGroup<'a> {
         self.table.rowid_index.len() as u64
     }
 
-    fn iter<'b>(&'b self) -> Box<Iterator<Item=Cow<'b, [Variant]>> + 'b> {
+    fn iter<'b>(&'b self) -> Box<Iterator<Item = Cow<'b, [Variant]>> + 'b> {
         let table = self.table;
         let columns: &'b [self::table::Column] = &table.columns;
 
@@ -67,14 +67,16 @@ impl<'a> Group for ScanGroup<'a> {
             let raw_key: &[u8] = &key_v;
             trace!("KEY: {:?}", raw_key);
 
-            let variable_column_count = columns.iter().filter(|column| {
-                column.dbtype.is_variable_length()
-            }).count();
+            let variable_column_count = columns
+                .iter()
+                .filter(|column| column.dbtype.is_variable_length())
+                .count();
 
-            let variable_lengths: Vec<_> = (0..variable_column_count).map(|i| {
-                let o = raw_key.len() - variable_column_count*8 + i*8;
-                byteutils::read_udbinteger(&raw_key[o..o+8])
-            }).collect();
+            let variable_lengths: Vec<_> = (0..variable_column_count)
+                .map(|i| {
+                    let o = raw_key.len() - variable_column_count * 8 + i * 8;
+                    byteutils::read_udbinteger(&raw_key[o..o + 8])
+                }).collect();
 
             trace!("variable lengths: {:?}", variable_lengths);
 
@@ -83,35 +85,38 @@ impl<'a> Group for ScanGroup<'a> {
             let mut variable_length_offset = 0;
             let mut key_offset = 8;
 
-            let v: Vec<Variant> = columns.iter().map(|column| {
-                let is_null = if column.nullable {
-                    let flag = raw_key[key_offset];
-                    key_offset += 1;
-                    flag != 0
-                } else {
-                    false
-                };
-
-                if is_null {
-                    ColumnValueOpsExt::null()
-                } else {
-                    let size = match column.dbtype.get_fixed_length() {
-                        Some(l) => l as usize,
-                        None => {
-                            let l = variable_lengths[variable_length_offset];
-                            variable_length_offset += 1;
-                            l as usize
-                        }
+            let v: Vec<Variant> = columns
+                .iter()
+                .map(|column| {
+                    let is_null = if column.nullable {
+                        let flag = raw_key[key_offset];
+                        key_offset += 1;
+                        flag != 0
+                    } else {
+                        false
                     };
 
-                    let bytes = &raw_key[key_offset..key_offset + size];
+                    if is_null {
+                        ColumnValueOpsExt::null()
+                    } else {
+                        let size = match column.dbtype.get_fixed_length() {
+                            Some(l) => l as usize,
+                            None => {
+                                let l = variable_lengths[variable_length_offset];
+                                variable_length_offset += 1;
+                                l as usize
+                            },
+                        };
 
-                    trace!("from bytes: {:?}, {:?}", column.dbtype, bytes);
-                    let value = ColumnValueOps::from_bytes(column.dbtype, bytes.into()).unwrap();
-                    key_offset += size;
-                    value
-                }
-            }).collect();
+                        let bytes = &raw_key[key_offset..key_offset + size];
+
+                        trace!("from bytes: {:?}, {:?}", column.dbtype, bytes);
+                        let value =
+                            ColumnValueOps::from_bytes(column.dbtype, bytes.into()).unwrap();
+                        key_offset += size;
+                        value
+                    }
+                }).collect();
 
             v.into()
         }))
@@ -121,32 +126,24 @@ impl<'a> Group for ScanGroup<'a> {
 impl DatabaseStorage for TempDb {
     type Info = TempDb;
 
-    fn scan_table<'a>(&'a self, table: &'a Table)
-    -> Box<Group<ColumnValue=Variant> + 'a>
-    {
-        Box::new(ScanGroup {
-            table: table
-        })
+    fn scan_table<'a>(&'a self, table: &'a Table) -> Box<Group<ColumnValue = Variant> + 'a> {
+        Box::new(ScanGroup { table: table })
     }
 }
 
 impl TempDb {
     pub fn new() -> TempDb {
-        TempDb {
-            tables: Vec::new()
-        }
+        TempDb { tables: Vec::new() }
     }
 
     pub fn execute_statement(&mut self, stmt: ast::Statement) -> ExecuteStatementResult {
         match stmt {
-            ast::Statement::Create(create_stmt) => {
-                match create_stmt {
-                    ast::CreateStatement::Table(s) => self.create_table(s)
-                }
+            ast::Statement::Create(create_stmt) => match create_stmt {
+                ast::CreateStatement::Table(s) => self.create_table(s),
             },
             ast::Statement::Insert(insert_stmt) => self.insert_into(insert_stmt),
             ast::Statement::Select(select_stmt) => self.select(select_stmt),
-            ast::Statement::Explain(explain_stmt) => self.explain(explain_stmt)
+            ast::Statement::Explain(explain_stmt) => self.explain(explain_stmt),
         }
     }
 
@@ -158,31 +155,39 @@ impl TempDb {
         let table_name = Identifier::new(&stmt.table.table_name).unwrap();
 
         let columns_result: Result<_, String>;
-        columns_result = stmt.columns.into_iter().enumerate().map(|(i, column)| {
-            let name = Identifier::new(&column.column_name).unwrap();
-            let type_name = Identifier::new(&column.type_name).unwrap();
-            let type_array_size = match column.type_array_size {
-                Some(Some(s)) => {
-                    let v = try!(self.parse_number_as_u64(s));
-                    Some(Some(v))
-                },
-                Some(None) => Some(None),
-                None => None
-            };
+        columns_result = stmt
+            .columns
+            .into_iter()
+            .enumerate()
+            .map(|(i, column)| {
+                let name = Identifier::new(&column.column_name).unwrap();
+                let type_name = Identifier::new(&column.type_name).unwrap();
+                let type_array_size = match column.type_array_size {
+                    Some(Some(s)) => {
+                        let v = try!(self.parse_number_as_u64(s));
+                        Some(Some(v))
+                    },
+                    Some(None) => Some(None),
+                    None => None,
+                };
 
-            let dbtype = try!(DbType::from_identifier(&type_name, type_array_size).ok_or(format!("{} is not a valid column type", type_name)));
+                let dbtype = try!(
+                    DbType::from_identifier(&type_name, type_array_size)
+                        .ok_or(format!("{} is not a valid column type", type_name))
+                );
 
-            let nullable = column.constraints.iter().any(|c| {
-                c.constraint == ast::CreateTableColumnConstraintType::Nullable
-            });
+                let nullable = column
+                    .constraints
+                    .iter()
+                    .any(|c| c.constraint == ast::CreateTableColumnConstraintType::Nullable);
 
-            Ok(table::Column {
-                offset: i as u32,
-                name: name,
-                dbtype: dbtype,
-                nullable: nullable
-            })
-        }).collect();
+                Ok(table::Column {
+                    offset: i as u32,
+                    name: name,
+                    dbtype: dbtype,
+                    nullable: nullable,
+                })
+            }).collect();
 
         let columns = try!(columns_result);
 
@@ -206,21 +211,26 @@ impl TempDb {
         {
             let table = try!(self.get_table_mut(&table_name));
 
-            column_types = table.get_columns().iter().map(|c| {
-                (c.dbtype, c.nullable)
-            }).collect();
+            column_types = table
+                .get_columns()
+                .iter()
+                .map(|c| (c.dbtype, c.nullable))
+                .collect();
 
             ast_index_to_column_index = match stmt.into_columns {
                 // Column names listed; map specified columns
-                Some(v) => try!(v.into_iter().map(|column_name| {
-                    let ident = Identifier::new(&column_name).unwrap();
-                    match table.find_column_by_name(&ident) {
-                        Some(column) => Ok(column.get_offset()),
-                        None => Err(format!("column {} not in table", column_name))
-                    }
-                }).collect()),
+                Some(v) => try!(
+                    v.into_iter()
+                        .map(|column_name| {
+                            let ident = Identifier::new(&column_name).unwrap();
+                            match table.find_column_by_name(&ident) {
+                                Some(column) => Ok(column.get_offset()),
+                                None => Err(format!("column {} not in table", column_name)),
+                            }
+                        }).collect()
+                ),
                 // No column names are listed; map all columns
-                None => (0..table.get_column_count()).collect()
+                None => (0..table.get_column_count()).collect(),
             };
 
             trace!("ast_index_to_column_index: {:?}", ast_index_to_column_index);
@@ -243,39 +253,56 @@ impl TempDb {
                     }
 
                     // TODO: don't allow expressions that SELECT the same table that's being inserted into
-                    let v: Vec<_> = try!({column_types.iter().zip(exprs.into_iter()).map(|(&(dbtype, nullable), expr)| {
-                        match expr {
-                            Some(expr) => {
-                                // TODO - allocate buffer outside of loop
-                                let mut buf = Vec::new();
+                    let v: Vec<_> = try!({
+                        column_types
+                            .iter()
+                            .zip(exprs.into_iter())
+                            .map(|(&(dbtype, nullable), expr)| {
+                                match expr {
+                                    Some(expr) => {
+                                        // TODO - allocate buffer outside of loop
+                                        let mut buf = Vec::new();
 
-                                let execute = ExecuteQueryPlan::new(self);
+                                        let execute = ExecuteQueryPlan::new(self);
 
-                                let sexpr = match queryplan::compile_ast_expression(self, expr).map_err(|e| format!("{}", e)) {
-                                    Ok(v) => v,
-                                    Err(e) => return Err(e)
-                                };
-                                let value = try!(execute.execute_expression(&sexpr));
+                                        let sexpr =
+                                            match queryplan::compile_ast_expression(self, expr)
+                                                .map_err(|e| format!("{}", e))
+                                            {
+                                                Ok(v) => v,
+                                                Err(e) => return Err(e),
+                                            };
+                                        let value = try!(execute.execute_expression(&sexpr));
 
-                                let is_null = try!(variant_to_data(value, dbtype, nullable, &mut buf));
-                                Ok((buf.into_boxed_slice(), is_null))
-                            },
-                            None => {
-                                // use default value for column type
-                                let is_null = if nullable { Some(true) } else { None };
-                                Ok((dbtype.get_default().into_owned().into_boxed_slice(), is_null))
-                            }
-                        }
-                    }).collect()});
+                                        let is_null = try!(variant_to_data(
+                                            value, dbtype, nullable, &mut buf
+                                        ));
+                                        Ok((buf.into_boxed_slice(), is_null))
+                                    },
+                                    None => {
+                                        // use default value for column type
+                                        let is_null = if nullable { Some(true) } else { None };
+                                        Ok((
+                                            dbtype.get_default().into_owned().into_boxed_slice(),
+                                            is_null,
+                                        ))
+                                    },
+                                }
+                            }).collect()
+                    });
 
                     let mut table = try!(self.get_table_mut(&table_name));
-                    try!(table.insert_row(v.into_iter()).map_err(|e| format!("{}", e)));
+                    try!(
+                        table
+                            .insert_row(v.into_iter())
+                            .map_err(|e| format!("{}", e))
+                    );
                     count += 1;
                 }
 
                 Ok(ExecuteStatementResponse::Inserted(count))
             },
-            ast::InsertSource::Select(_s) => unimplemented!()
+            ast::InsertSource::Select(_s) => unimplemented!(),
         }
     }
 
@@ -291,11 +318,15 @@ impl TempDb {
             Ok(())
         }));
 
-        let column_names: Vec<String> = plan.out_column_names.iter().map(|ident| ident.to_string()).collect();
+        let column_names: Vec<String> = plan
+            .out_column_names
+            .iter()
+            .map(|ident| ident.to_string())
+            .collect();
 
         Ok(ExecuteStatementResponse::Select {
             column_names: column_names.into_boxed_slice(),
-            rows: Box::new(rows.into_iter())
+            rows: Box::new(rows.into_iter()),
         })
     }
 
@@ -304,10 +335,11 @@ impl TempDb {
 
         match stmt {
             ast::ExplainStatement::Select(select) => {
-                let plan = try!(QueryPlan::compile_select(self, select).map_err(|e| format!("{}", e)));
+                let plan =
+                    try!(QueryPlan::compile_select(self, select).map_err(|e| format!("{}", e)));
 
                 Ok(ExecuteStatementResponse::Explain(plan.to_string()))
-            }
+            },
         }
     }
 
@@ -323,31 +355,38 @@ impl TempDb {
     }
 
     fn get_table_mut(&mut self, table_name: &str) -> Result<&mut Table, String> {
-        let table_name = try!(Identifier::new(table_name).ok_or(format!("Bad table name: {}", table_name)));
+        let table_name =
+            try!(Identifier::new(table_name).ok_or(format!("Bad table name: {}", table_name)));
 
         match self.tables.iter_mut().find(|t| t.name == table_name) {
             Some(s) => Ok(s),
-            None => Err(format!("Could not find table named {}", table_name))
+            None => Err(format!("Could not find table named {}", table_name)),
         }
     }
 
     fn parse_number_as_u64(&self, number: String) -> Result<u64, String> {
-        number.parse().map_err(|_| format!("{} is not a valid number", number))
+        number
+            .parse()
+            .map_err(|_| format!("{} is not a valid number", number))
     }
 }
 
-fn variant_to_data(value: Variant, column_type: DbType, nullable: bool, buf: &mut Vec<u8>)
--> Result<Option<bool>, String> {
+fn variant_to_data(
+    value: Variant,
+    column_type: DbType,
+    nullable: bool,
+    buf: &mut Vec<u8>,
+) -> Result<Option<bool>, String> {
     match (value.is_null(), nullable) {
         (true, true) => Ok(Some(true)),
-        (true, false) => {
-            Err(format!("cannot insert NULL into column that doesn't allow NULL"))
-        },
+        (true, false) => Err(format!(
+            "cannot insert NULL into column that doesn't allow NULL"
+        )),
         (false, nullable) => {
             let bytes = value.to_bytes(column_type).unwrap();
             buf.extend_from_slice(&bytes);
 
             Ok(if nullable { Some(false) } else { None })
-        }
+        },
     }
 }

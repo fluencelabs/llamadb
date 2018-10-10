@@ -1,14 +1,12 @@
 use byteutils;
-use types::DbType;
 use databaseinfo::{ColumnInfo, TableInfo};
 use identifier::Identifier;
 use std::collections::BTreeSet;
 use std::fmt;
+use types::DbType;
 
 pub enum UpdateError {
-    ValidationError {
-        column_name: Identifier,
-    }
+    ValidationError { column_name: Identifier },
 }
 
 impl fmt::Display for UpdateError {
@@ -16,7 +14,7 @@ impl fmt::Display for UpdateError {
         match self {
             &UpdateError::ValidationError { ref column_name } => {
                 write!(f, "Problem validating column: {}", column_name)
-            }
+            },
         }
     }
 }
@@ -27,7 +25,7 @@ pub struct Table {
     pub columns: Vec<Column>,
 
     pub next_rowid: u64,
-    pub rowid_index: BTreeSet<Vec<u8>>
+    pub rowid_index: BTreeSet<Vec<u8>>,
 }
 
 #[derive(Debug)]
@@ -35,15 +33,19 @@ pub struct Column {
     pub offset: u32,
     pub name: Identifier,
     pub dbtype: DbType,
-    pub nullable: bool
+    pub nullable: bool,
 }
 
 impl TableInfo for Table {
     type Column = Column;
 
-    fn get_name(&self) -> &Identifier { &self.name }
+    fn get_name(&self) -> &Identifier {
+        &self.name
+    }
 
-    fn get_column_count(&self) -> u32 { self.columns.len() as u32 }
+    fn get_column_count(&self) -> u32 {
+        self.columns.len() as u32
+    }
 
     fn find_column_by_offset(&self, offset: u32) -> Option<&Column> {
         let i = offset as usize;
@@ -63,7 +65,9 @@ impl TableInfo for Table {
 impl Table {
     /// rowid is automatically added, and is not included as a specified column
     pub fn insert_row<I>(&mut self, column_data: I) -> Result<(), UpdateError>
-    where I: ExactSizeIterator, I: Iterator<Item = (Box<[u8]>, Option<bool>)>
+    where
+        I: ExactSizeIterator,
+        I: Iterator<Item = (Box<[u8]>, Option<bool>)>,
     {
         assert_eq!(self.columns.len(), column_data.len());
 
@@ -97,7 +101,7 @@ impl Table {
 
                     true
                 },
-                None => true
+                None => true,
             };
 
             if append_data {
@@ -111,15 +115,13 @@ impl Table {
                     assert_eq!(column.nullable, is_null.is_some());
 
                     if let Some(is_null) = is_null {
-                        if is_null {
-                        }
-
+                        if is_null {}
                     }
 
                     key.extend_from_slice(data);
                 } else {
                     return Err(UpdateError::ValidationError {
-                        column_name: column.name.clone()
+                        column_name: column.name.clone(),
                     });
                 }
             }
@@ -141,7 +143,13 @@ impl Table {
 }
 
 impl ColumnInfo for Column {
-    fn get_offset(&self) -> u32 { self.offset }
-    fn get_name(&self) -> &Identifier { &self.name }
-    fn get_dbtype(&self) -> &DbType { &self.dbtype }
+    fn get_offset(&self) -> u32 {
+        self.offset
+    }
+    fn get_name(&self) -> &Identifier {
+        &self.name
+    }
+    fn get_dbtype(&self) -> &DbType {
+        &self.dbtype
+    }
 }

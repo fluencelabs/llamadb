@@ -1,9 +1,9 @@
 use byteutils;
 use columnvalueops::ColumnValueOps;
-use types::DbType;
-use types::F64NoNaN;
 use std::borrow::Cow;
 use std::fmt;
+use types::DbType;
+use types::F64NoNaN;
 
 #[derive(Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Variant {
@@ -12,7 +12,7 @@ pub enum Variant {
     StringLiteral(String),
     SignedInteger(i64),
     UnsignedInteger(u64),
-    Float(F64NoNaN)
+    Float(F64NoNaN),
 }
 
 impl fmt::Display for Variant {
@@ -73,7 +73,10 @@ impl ColumnValueOps for Variant {
     }
 
     fn to_u64(self) -> Result<u64, ()> {
-        let num = self.cast(DbType::Integer { signed: false, bytes: 8 });
+        let num = self.cast(DbType::Integer {
+            signed: false,
+            bytes: 8,
+        });
         if let Some(Variant::UnsignedInteger(i)) = num {
             Ok(i)
         } else {
@@ -116,14 +119,14 @@ impl ColumnValueOps for Variant {
                 } else {
                     Err(())
                 }
-            }
+            },
         }
     }
 
     fn to_bytes(self, dbtype: DbType) -> Result<Box<[u8]>, ()> {
         let s = match self.cast(dbtype) {
             Some(s) => s,
-            None => return Err(())
+            None => return Err(()),
         };
 
         match (s, dbtype) {
@@ -131,18 +134,28 @@ impl ColumnValueOps for Variant {
                 // NULL has no data.
                 Err(())
             },
-            (Variant::Bytes(v), DbType::ByteDynamic) => {
-                Ok(v.into_boxed_slice())
-            },
+            (Variant::Bytes(v), DbType::ByteDynamic) => Ok(v.into_boxed_slice()),
             (Variant::StringLiteral(s), DbType::String) => {
                 Ok((s + "\0").into_bytes().into_boxed_slice())
             },
-            (Variant::SignedInteger(v), DbType::Integer { signed: true, bytes }) => {
+            (
+                Variant::SignedInteger(v),
+                DbType::Integer {
+                    signed: true,
+                    bytes,
+                },
+            ) => {
                 let mut buf = vec![0; bytes as usize];
                 byteutils::write_sdbinteger(v, &mut buf);
                 Ok(buf.into_boxed_slice())
             },
-            (Variant::UnsignedInteger(v), DbType::Integer { signed: false, bytes }) => {
+            (
+                Variant::UnsignedInteger(v),
+                DbType::Integer {
+                    signed: false,
+                    bytes,
+                },
+            ) => {
                 let mut buf = vec![0; bytes as usize];
                 byteutils::write_udbinteger(v, &mut buf);
                 Ok(buf.into_boxed_slice())
@@ -152,9 +165,7 @@ impl ColumnValueOps for Variant {
                 byteutils::write_dbfloat(*v, &mut buf);
                 Ok(Box::new(buf))
             },
-            _ => {
-                Err(())
-            }
+            _ => Err(()),
         }
     }
 
@@ -163,14 +174,26 @@ impl ColumnValueOps for Variant {
             &Variant::Null => DbType::Null,
             &Variant::Bytes(ref bytes) => DbType::ByteFixed(bytes.len() as u64),
             &Variant::StringLiteral(..) => DbType::String,
-            &Variant::SignedInteger(..) => DbType::Integer { signed: true, bytes: 8 },
-            &Variant::UnsignedInteger(..) => DbType::Integer { signed: false, bytes: 8 },
-            &Variant::Float(..) => DbType::F64
+            &Variant::SignedInteger(..) => DbType::Integer {
+                signed: true,
+                bytes: 8,
+            },
+            &Variant::UnsignedInteger(..) => DbType::Integer {
+                signed: false,
+                bytes: 8,
+            },
+            &Variant::Float(..) => DbType::F64,
         }
     }
 
     fn to_3vl(&self) -> i8 {
-        fn b(value: bool) -> i8 { if value { 1 } else { -1 } }
+        fn b(value: bool) -> i8 {
+            if value {
+                1
+            } else {
+                -1
+            }
+        }
 
         match self {
             &Variant::Null => 0,
@@ -178,7 +201,7 @@ impl ColumnValueOps for Variant {
             &Variant::StringLiteral(ref s) => b(!s.is_empty()),
             &Variant::SignedInteger(n) => b(n != 0),
             &Variant::UnsignedInteger(n) => b(n != 0),
-            &Variant::Float(n) => b(*n != 0.0)
+            &Variant::Float(n) => b(*n != 0.0),
         }
     }
 
@@ -187,7 +210,7 @@ impl ColumnValueOps for Variant {
             -1 => from_bool(false),
             0 => Variant::Null,
             1 => from_bool(true),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -200,22 +223,44 @@ impl ColumnValueOps for Variant {
         if let Some(r) = rhs.clone().cast(dbtype) {
             match (self, &r) {
                 (&Variant::Null, _) | (_, &Variant::Null) => None,
-                (&Variant::UnsignedInteger(l), &Variant::UnsignedInteger(r)) => {
-                    Some(if l < r { -1 } else if l > r { 1 } else { 0 })
-                },
-                (&Variant::SignedInteger(l), &Variant::SignedInteger(r)) => {
-                    Some(if l < r { -1 } else if l > r { 1 } else { 0 })
-                },
-                (&Variant::Float(l), &Variant::Float(r)) => {
-                    Some(if l < r { -1 } else if l > r { 1 } else { 0 })
-                },
-                (&Variant::Bytes(ref l), &Variant::Bytes(ref r)) => {
-                    Some(if l < r { -1 } else if l > r { 1 } else { 0 })
-                },
+                (&Variant::UnsignedInteger(l), &Variant::UnsignedInteger(r)) => Some(if l < r {
+                    -1
+                } else if l > r {
+                    1
+                } else {
+                    0
+                }),
+                (&Variant::SignedInteger(l), &Variant::SignedInteger(r)) => Some(if l < r {
+                    -1
+                } else if l > r {
+                    1
+                } else {
+                    0
+                }),
+                (&Variant::Float(l), &Variant::Float(r)) => Some(if l < r {
+                    -1
+                } else if l > r {
+                    1
+                } else {
+                    0
+                }),
+                (&Variant::Bytes(ref l), &Variant::Bytes(ref r)) => Some(if l < r {
+                    -1
+                } else if l > r {
+                    1
+                } else {
+                    0
+                }),
                 (&Variant::StringLiteral(ref l), &Variant::StringLiteral(ref r)) => {
-                    Some(if l < r { -1 } else if l > r { 1 } else { 0 })
+                    Some(if l < r {
+                        -1
+                    } else if l > r {
+                        1
+                    } else {
+                        0
+                    })
                 },
-                _ => unreachable!()
+                _ => unreachable!(),
             }
         } else {
             None
@@ -224,14 +269,12 @@ impl ColumnValueOps for Variant {
 
     fn cast(self, dbtype: DbType) -> Option<Self> {
         match (self, dbtype) {
-            (e@Variant::Null, DbType::Null)
-            | (e@Variant::Bytes(_), DbType::ByteDynamic)
-            | (e@Variant::StringLiteral(_), DbType::String)
-            | (e@Variant::SignedInteger(_), DbType::Integer { signed: true, .. })
-            | (e@Variant::UnsignedInteger(_), DbType::Integer { signed: false, .. })
-            | (e@Variant::Float(_), DbType::F64) => {
-                Some(e)
-            },
+            (e @ Variant::Null, DbType::Null) |
+            (e @ Variant::Bytes(_), DbType::ByteDynamic) |
+            (e @ Variant::StringLiteral(_), DbType::String) |
+            (e @ Variant::SignedInteger(_), DbType::Integer { signed: true, .. }) |
+            (e @ Variant::UnsignedInteger(_), DbType::Integer { signed: false, .. }) |
+            (e @ Variant::Float(_), DbType::F64) => Some(e),
             (e, DbType::String) => {
                 // every variant can be converted to a string
                 Some(Variant::StringLiteral(e.to_string()))
@@ -241,7 +284,7 @@ impl ColumnValueOps for Variant {
                 let dbtype = e.get_dbtype();
                 match e.to_bytes(dbtype) {
                     Ok(bytes) => Some(Variant::Bytes(bytes.into_vec())),
-                    Err(()) => None
+                    Err(()) => None,
                 }
             },
             (Variant::Bytes(bytes), v) => {
@@ -249,7 +292,7 @@ impl ColumnValueOps for Variant {
                 let r: &[u8] = &bytes;
                 match ColumnValueOps::from_bytes(v, r.into()) {
                     Ok(s) => Some(s),
-                    Err(()) => None
+                    Err(()) => None,
                 }
             },
             (Variant::Float(float), DbType::Integer { signed, .. }) => {
@@ -273,7 +316,7 @@ impl ColumnValueOps for Variant {
             (Variant::SignedInteger(integer), DbType::Integer { signed: false, .. }) => {
                 Some(Variant::UnsignedInteger(integer as u64))
             },
-            _ => None
+            _ => None,
         }
     }
 
@@ -282,13 +325,11 @@ impl ColumnValueOps for Variant {
             (&Variant::StringLiteral(ref l), &Variant::StringLiteral(ref r)) => {
                 Variant::StringLiteral(format!("{}{}", l, r))
             },
-            (e @ &Variant::StringLiteral(_), rhs) => {
-                match rhs.clone().cast(DbType::String) {
-                    Some(r) => e.concat(&r),
-                    None => e.clone()
-                }
+            (e @ &Variant::StringLiteral(_), rhs) => match rhs.clone().cast(DbType::String) {
+                Some(r) => e.concat(&r),
+                None => e.clone(),
             },
-            (e, _) => e.clone()
+            (e, _) => e.clone(),
         }
     }
 
@@ -306,7 +347,7 @@ impl ColumnValueOps for Variant {
                 (&Variant::Float(l), Variant::Float(r)) => {
                     Variant::Float(F64NoNaN::new(*l + *r).unwrap())
                 },
-                _ => self.clone()
+                _ => self.clone(),
             }
         } else {
             self.clone()
@@ -327,7 +368,7 @@ impl ColumnValueOps for Variant {
                 (&Variant::Float(l), Variant::Float(r)) => {
                     Variant::Float(F64NoNaN::new(*l - *r).unwrap())
                 },
-                _ => self.clone()
+                _ => self.clone(),
             }
         } else {
             self.clone()
@@ -348,7 +389,7 @@ impl ColumnValueOps for Variant {
                 (&Variant::Float(l), Variant::Float(r)) => {
                     Variant::Float(F64NoNaN::new(*l * *r).unwrap())
                 },
-                _ => self.clone()
+                _ => self.clone(),
             }
         } else {
             self.clone()
@@ -376,7 +417,7 @@ impl ColumnValueOps for Variant {
                         Variant::Float(F64NoNaN::new(*l / *r).unwrap())
                     }
                 },
-                _ => self.clone()
+                _ => self.clone(),
             }
         } else {
             self.clone()
@@ -389,11 +430,7 @@ impl ColumnValueOps for Variant {
             &Variant::SignedInteger(n) => Variant::SignedInteger(-n),
             &Variant::UnsignedInteger(n) => Variant::SignedInteger(-(n as i64)),
             &Variant::Float(n) => Variant::Float(F64NoNaN::new(-*n).unwrap()),
-            &Variant::Null |
-            &Variant::Bytes(..) |
-            &Variant::StringLiteral(..) => {
-                self.clone()
-            }
+            &Variant::Null | &Variant::Bytes(..) | &Variant::StringLiteral(..) => self.clone(),
         }
     }
 }
