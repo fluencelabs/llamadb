@@ -8,6 +8,7 @@ use self::aggregate::*;
 
 mod groupbuckets;
 use self::groupbuckets::GroupBuckets;
+use tempdb::ExecuteError;
 
 enum SourceType<'a, ColumnValue: Sized + 'static> {
     Row(&'a [ColumnValue]),
@@ -67,7 +68,7 @@ where
     <Storage::Info as DatabaseInfo>::Table: 'a,
 {
     pub fn new(storage: &'s Storage) -> ExecuteQueryPlan<'s, Storage> {
-        ExecuteQueryPlan { storage: storage }
+        ExecuteQueryPlan { storage }
     }
 
     // TODO: result_cb should yield a boxed array instead of a reference
@@ -75,15 +76,15 @@ where
         &self,
         expr: &SExpression<'a, Storage::Info>,
         result_cb: &'c mut FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue])
-            -> Result<(), String>,
-    ) -> Result<(), String> {
+            -> Result<(), ExecuteError>,
+    ) -> Result<(), ExecuteError> {
         self.execute(expr, result_cb, None)
     }
 
     pub fn execute_expression(
         &self,
         expr: &SExpression<'a, Storage::Info>,
-    ) -> Result<<Storage::Info as DatabaseInfo>::ColumnValue, String> {
+    ) -> Result<<Storage::Info as DatabaseInfo>::ColumnValue, ExecuteError> {
         self.resolve_value(expr, None)
     }
 
@@ -91,9 +92,9 @@ where
         &self,
         expr: &SExpression<'a, Storage::Info>,
         result_cb: &'c mut FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue])
-            -> Result<(), String>,
+            -> Result<(), ExecuteError>,
         source: Option<&Source<'b, <Storage::Info as DatabaseInfo>::ColumnValue>>,
-    ) -> Result<(), String> {
+    ) -> Result<(), ExecuteError> {
         match expr {
             &SExpression::Scan {
                 table,
@@ -104,11 +105,11 @@ where
                 for row in group.iter() {
                     let new_source = Source {
                         parent: source,
-                        source_id: source_id,
+                        source_id,
                         source_type: SourceType::Row(&row),
                     };
 
-                    try!(self.execute(yield_fn, result_cb, Some(&new_source)));
+                    self.execute(yield_fn, result_cb, Some(&new_source))?;
                 }
 
                 Ok(())
@@ -122,16 +123,16 @@ where
             } => {
                 let mut one_or_more_rows = false;
 
-                try!(self.execute(
+                self.execute(
                     yield_in_fn,
                     &mut |row| {
                         let new_source = Source {
                             parent: source,
-                            source_id: source_id,
+                            source_id,
                             source_type: SourceType::Row(row),
                         };
 
-                        let pred_result = try!(self.resolve_value(predicate, Some(&new_source)));
+                        let pred_result = self.resolve_value(predicate, Some(&new_source))?;
 
                         if pred_result.tests_true() {
                             one_or_more_rows = true;
@@ -140,14 +141,14 @@ where
                             Ok(())
                         }
                     },
-                    source
-                ));
+                    source,
+                )?;
 
                 if !one_or_more_rows {
                     // no rows were matched
                     let new_source = Source {
                         parent: source,
-                        source_id: source_id,
+                        source_id,
                         source_type: SourceType::Row(right_rows_if_none),
                     };
 
@@ -165,7 +166,7 @@ where
                 &mut |row| {
                     let new_source = Source {
                         parent: source,
-                        source_id: source_id,
+                        source_id,
                         source_type: SourceType::Row(row),
                     };
 
@@ -181,12 +182,12 @@ where
             } => {
                 let mut group_buckets = GroupBuckets::new();
 
-                try!(self.execute(
+                self.execute(
                     yield_in_fn,
                     &mut |row| {
                         let new_source = Source {
                             parent: source,
-                            source_id: source_id,
+                            source_id,
                             source_type: SourceType::Row(row),
                         };
 
@@ -195,7 +196,7 @@ where
                             .map(|value| self.resolve_value(value, Some(&new_source)))
                             .collect();
 
-                        let key = try!(result);
+                        let key = result?;
 
                         // TODO: don't box up row
                         let row_boxed = row.to_vec().into_boxed_slice();
@@ -204,8 +205,8 @@ where
 
                         Ok(())
                     },
-                    source
-                ));
+                    source,
+                )?;
 
                 // the group buckets have been filled.
                 // now to yield for each group...
@@ -213,32 +214,29 @@ where
                 for group in group_buckets {
                     let new_source = Source {
                         parent: source,
-                        source_id: source_id,
+                        source_id,
                         source_type: SourceType::Group(&group),
                     };
 
-                    try!(self.execute(yield_out_fn, result_cb, Some(&new_source)));
+                    self.execute(yield_out_fn, result_cb, Some(&new_source))?;
                 }
 
                 Ok(())
             },
             &SExpression::Yield { ref fields } => {
-                let columns: Result<Vec<_>, _>;
-                columns = fields
+                let columns: Result<Vec<_>, _> = fields
                     .iter()
                     .map(|e| self.resolve_value(e, source))
                     .collect();
-                match columns {
-                    Ok(columns) => result_cb(&columns),
-                    Err(e) => Err(e),
-                }
+
+                columns.map(|columns| result_cb(&columns))?
             },
             &SExpression::If {
                 ref chains,
                 ref else_,
             } => {
                 for chain in chains {
-                    let pred_result = try!(self.resolve_value(&chain.predicate, source));
+                    let pred_result = self.resolve_value(&chain.predicate, source)?;
 
                     if pred_result.tests_true() {
                         return self.execute(&chain.yield_fn, result_cb, source);
@@ -256,9 +254,9 @@ where
             &SExpression::UnaryOp { .. } |
             &SExpression::AggregateOp { .. } |
             &SExpression::CountAll { .. } |
-            &SExpression::Value(..) => {
-                Err(format!("encountered expression that cannot yield rows"))
-            },
+            &SExpression::Value(..) => Err(ExecuteError::from_string(format!(
+                "encountered expression that cannot yield rows"
+            ))),
         }
     }
 
@@ -266,7 +264,7 @@ where
         &self,
         expr: &SExpression<'a, Storage::Info>,
         source: Option<&Source<'b, <Storage::Info as DatabaseInfo>::ColumnValue>>,
-    ) -> Result<<Storage::Info as DatabaseInfo>::ColumnValue, String> {
+    ) -> Result<<Storage::Info as DatabaseInfo>::ColumnValue, ExecuteError> {
         match expr {
             &SExpression::Value(ref v) => Ok(v.clone()),
             &SExpression::ColumnField {
@@ -284,10 +282,10 @@ where
                                 Some(row) => Ok(row[column_offset as usize].clone()),
                                 None => Ok(ColumnValueOpsExt::null()),
                             },
-                            None => Err(format!(
+                            None => Err(ExecuteError::from_string(format!(
                                 "ColumnField: source id is not a valid row or group: {}",
                                 source_id
-                            )),
+                            ))),
                         }
                     },
                 }
@@ -297,8 +295,8 @@ where
                 ref lhs,
                 ref rhs,
             } => {
-                let l = try!(self.resolve_value(lhs, source));
-                let r = try!(self.resolve_value(rhs, source));
+                let l = self.resolve_value(lhs, source)?;
+                let r = self.resolve_value(rhs, source)?;
 
                 Ok(match op {
                     BinaryOp::Equal => l.equals(&r),
@@ -318,7 +316,7 @@ where
                 })
             },
             &SExpression::UnaryOp { op, ref expr } => {
-                let e = try!(self.resolve_value(expr, source));
+                let e = self.resolve_value(expr, source)?;
 
                 Ok(match op {
                     UnaryOp::Negate => e.negate(),
@@ -337,20 +335,20 @@ where
                         for row in group.iter() {
                             let new_source = Source {
                                 parent: source,
-                                source_id: source_id,
+                                source_id,
                                 source_type: SourceType::Row(&row),
                             };
 
-                            let v = try!(self.resolve_value(value, Some(&new_source)));
+                            let v = self.resolve_value(value, Some(&new_source))?;
                             op_functor.feed(v);
                         }
 
                         Ok(op_functor.finish())
                     },
-                    None => Err(format!(
+                    None => Err(ExecuteError::from_string(format!(
                         "AggregateOp: source id is not a valid group: {}",
                         source_id
-                    )),
+                    ))),
                 }
             },
             &SExpression::CountAll { source_id } => {
@@ -359,10 +357,10 @@ where
                         let count = group.count();
                         Ok(ColumnValueOps::from_u64(count))
                     },
-                    None => Err(format!(
+                    None => Err(ExecuteError::from_string(format!(
                         "CountAll: source id is not a valid group: {}",
                         source_id
-                    )),
+                    ))),
                 }
             },
             &SExpression::Map {
@@ -377,7 +375,7 @@ where
                 let mut r = None;
                 let mut row_count = 0;
 
-                try!(self.execute(
+                self.execute(
                     yield_in_fn,
                     &mut |row| {
                         if row_count == 0 {
@@ -386,30 +384,32 @@ where
                         row_count += 1;
                         Ok(())
                     },
-                    source
-                ));
+                    source,
+                )?;
 
                 if row_count == 1 {
                     let row = r.unwrap();
 
                     let new_source = Source {
                         parent: source,
-                        source_id: source_id,
+                        source_id,
                         source_type: SourceType::Row(&row),
                     };
 
                     self.resolve_value(yield_out_fn, Some(&new_source))
                 } else {
-                    Err(format!("subquery must yield exactly one row"))
+                    Err(ExecuteError::from_string(format!(
+                        "subquery must yield exactly one row"
+                    )))
                 }
             },
             &SExpression::Scan { .. } |
             &SExpression::LeftJoin { .. } |
             &SExpression::TempGroupBy { .. } |
             &SExpression::Yield { .. } |
-            &SExpression::If { .. } => Err(format!(
+            &SExpression::If { .. } => Err(ExecuteError::from_string(format!(
                 "encounted expression that cannot resolve to a single value"
-            )),
+            ))),
         }
     }
 }

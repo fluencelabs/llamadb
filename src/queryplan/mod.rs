@@ -389,17 +389,14 @@ where
             let query_id = self.query_id;
             self.new_aggregated_source_id(query_id);
 
-            let group_by_values = stmt.group_by
+            let group_by_values = stmt
+                .group_by
                 .into_iter()
                 .map(|expr| self.ast_expression_to_sexpression(expr, &new_scope, groups_info))
-                .collect()?;
+                .collect::<Result<_, QueryPlanCompileError>>()?;
 
             let having_predicate = if let Some(having) = stmt.having {
-                Some(self.ast_expression_to_sexpression(
-                    having,
-                    &new_scope,
-                    groups_info
-                )?)
+                Some(self.ast_expression_to_sexpression(having, &new_scope, groups_info)?)
             } else {
                 None
             };
@@ -576,10 +573,7 @@ where
                     out_column_names: table.get_column_names(),
                 };
 
-                let t = FromWhereTableOrSubquery::Table {
-                    source_id,
-                    table,
-                };
+                let t = FromWhereTableOrSubquery::Table { source_id, table };
 
                 Ok(((s, t), alias_identifier))
             },
@@ -595,11 +589,9 @@ where
     ) -> Result<(SourceScope<'b>, FromWhere<'a, DB>), QueryPlanCompileError> {
         let a: Vec<_> = ast_cross_tables
             .into_iter()
-            .map(|ast_table_or_subquery| self.ast_table_or_subquery_to(
-                ast_table_or_subquery,
-                scope,
-                groups_info
-            )).collect()?;
+            .map(|ast_table_or_subquery| {
+                self.ast_table_or_subquery_to(ast_table_or_subquery, scope, groups_info)
+            }).collect::<Result<_, _>>()?;
 
         let (tables, table_aliases): (Vec<_>, _) = a.into_iter().unzip();
 
@@ -608,11 +600,7 @@ where
         let new_scope = SourceScope::new(Some(scope), source_tables, table_aliases);
 
         let where_expr = if let Some(where_expr) = where_expr {
-            Some(self.ast_expression_to_sexpression(
-                where_expr,
-                &new_scope,
-                groups_info
-            )?)
+            Some(self.ast_expression_to_sexpression(where_expr, &new_scope, groups_info)?)
         } else {
             None
         };
@@ -650,11 +638,8 @@ where
                         new_scope.tables.push(source_table);
                         new_scope.table_aliases.push(alias);
 
-                        let on = self.ast_expression_to_sexpression(
-                            join.on,
-                            &new_scope,
-                            groups_info
-                        )?;
+                        let on =
+                            self.ast_expression_to_sexpression(join.on, &new_scope, groups_info)?;
                         Ok(FromWhereJoin::Inner {
                             table: fromwhere_table,
                             on,
@@ -673,11 +658,8 @@ where
                         new_scope.tables.push(left_join_source_table);
                         new_scope.table_aliases.push(alias);
 
-                        let on = self.ast_expression_to_sexpression(
-                            join.on,
-                            &new_scope,
-                            groups_info
-                        )?;
+                        let on =
+                            self.ast_expression_to_sexpression(join.on, &new_scope, groups_info)?;
                         Ok(FromWhereJoin::Left {
                             source_id,
                             table: fromwhere_table.yield_all_columns(column_count),
@@ -688,14 +670,10 @@ where
                         })
                     },
                 }
-            }).collect()?;
+            }).collect::<Result<_, _>>()?;
 
         let where_expr = if let Some(where_expr) = where_expr {
-            Some(self.ast_expression_to_sexpression(
-                where_expr,
-                &new_scope,
-                groups_info
-            )?)
+            Some(self.ast_expression_to_sexpression(where_expr, &new_scope, groups_info)?)
         } else {
             None
         };
@@ -931,9 +909,7 @@ where
                         let query_id = self.query_id;
                         let source_id = self.new_aggregated_source_id(query_id);
 
-                        Ok(SExpression::CountAll {
-                            source_id,
-                        })
+                        Ok(SExpression::CountAll { source_id })
                     },
                     _ => Err(QueryPlanCompileError::AggregateAllMustBeCount(ident)),
                 }
