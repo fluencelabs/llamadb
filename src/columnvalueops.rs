@@ -6,13 +6,13 @@ pub trait ColumnValueOps: Sized {
     fn from_number_literal(s: Cow<str>) -> Result<Self, Cow<str>>;
 
     fn from_f64(value: f64) -> Self;
-    fn to_f64(self) -> Result<f64, ()>;
+    fn to_f64(&self) -> Result<f64, String>;
 
     fn from_u64(value: u64) -> Self;
-    fn to_u64(self) -> Result<u64, ()>;
+    fn to_u64(&self) -> Result<u64, String>;
 
-    fn from_bytes(dbtype: DbType, bytes: Cow<[u8]>) -> Result<Self, ()>;
-    fn to_bytes(self, dbtype: DbType) -> Result<Box<[u8]>, ()>;
+    fn from_bytes(dbtype: DbType, bytes: Cow<[u8]>) -> Result<Self, String>;
+    fn to_bytes(&self, dbtype: DbType) -> Result<Box<[u8]>, String>;
     fn get_dbtype(&self) -> DbType;
 
     /// Must return one of the following:
@@ -27,13 +27,13 @@ pub trait ColumnValueOps: Sized {
     /// * -1: self < rhs
     /// * 0: self == rhs
     /// * 1: self > rhs
-    fn compare(&self, rhs: &Self) -> Option<i8>;
-    fn cast(self, dbtype: DbType) -> Option<Self>;
-    fn concat(&self, rhs: &Self) -> Self;
-    fn add(&self, rhs: &Self) -> Self;
-    fn sub(&self, rhs: &Self) -> Self;
-    fn mul(&self, rhs: &Self) -> Self;
-    fn div(&self, rhs: &Self) -> Self;
+    fn compare(&self, rhs: &Self) -> Result<Option<i8>, String>;
+    fn cast(&self, dbtype: DbType) -> Result<Self, String>;
+    fn concat(&self, rhs: &Self) -> Result<Self, String>;
+    fn add(&self, rhs: &Self) -> Result<Self, String>;
+    fn sub(&self, rhs: &Self) -> Result<Self, String>;
+    fn mul(&self, rhs: &Self) -> Result<Self, String>;
+    fn div(&self, rhs: &Self) -> Result<Self, String>;
     fn negate(&self) -> Self;
 }
 
@@ -42,52 +42,52 @@ pub trait ColumnValueOpsExt: ColumnValueOps {
         ColumnValueOps::from_3vl(0)
     }
 
-    fn equals(&self, rhs: &Self) -> Self {
-        ColumnValueOps::from_3vl(match self.compare(rhs) {
+    fn equals(&self, rhs: &Self) -> Result<Self, String> {
+        Ok(ColumnValueOps::from_3vl(match self.compare(rhs)? {
             None => 0,
             Some(0) => 1,
             Some(_) => -1,
-        })
+        }))
     }
 
-    fn not_equals(&self, rhs: &Self) -> Self {
-        ColumnValueOps::from_3vl(match self.compare(rhs) {
+    fn not_equals(&self, rhs: &Self) -> Result<Self, String> {
+        Ok(ColumnValueOps::from_3vl(match self.compare(rhs)? {
             None => 0,
             Some(0) => -1,
             Some(_) => 1,
-        })
+        }))
     }
 
-    fn less_than(&self, rhs: &Self) -> Self {
-        ColumnValueOps::from_3vl(match self.compare(rhs) {
+    fn less_than(&self, rhs: &Self) -> Result<Self, String> {
+        Ok(ColumnValueOps::from_3vl(match self.compare(rhs)? {
             None => 0,
             Some(-1) => 1,
             Some(_) => -1,
-        })
+        }))
     }
 
-    fn greater_than(&self, rhs: &Self) -> Self {
-        ColumnValueOps::from_3vl(match self.compare(rhs) {
+    fn greater_than(&self, rhs: &Self) -> Result<Self, String> {
+        Ok(ColumnValueOps::from_3vl(match self.compare(rhs)? {
             None => 0,
             Some(1) => 1,
             Some(_) => -1,
-        })
+        }))
     }
 
-    fn less_than_or_equal(&self, rhs: &Self) -> Self {
-        ColumnValueOps::from_3vl(match self.compare(rhs) {
+    fn less_than_or_equal(&self, rhs: &Self) -> Result<Self, String> {
+        Ok(ColumnValueOps::from_3vl(match self.compare(rhs)? {
             None => 0,
             Some(-1) | Some(0) => 1,
             Some(_) => -1,
-        })
+        }))
     }
 
-    fn greater_than_or_equal(&self, rhs: &Self) -> Self {
-        ColumnValueOps::from_3vl(match self.compare(rhs) {
+    fn greater_than_or_equal(&self, rhs: &Self) -> Result<Self, String> {
+        Ok(ColumnValueOps::from_3vl(match self.compare(rhs)? {
             None => 0,
             Some(0) | Some(1) => 1,
             Some(_) => -1,
-        })
+        }))
     }
 
     fn is_null(&self) -> bool {

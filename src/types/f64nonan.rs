@@ -10,11 +10,11 @@ pub struct F64NoNaN {
 }
 
 impl F64NoNaN {
-    pub fn new(value: f64) -> Option<F64NoNaN> {
+    pub fn new(value: f64) -> Result<F64NoNaN, String> {
         if value.is_nan() {
-            None
+            Err(format!("{:?} cannot be cast to F64NoNaN", value))
         } else {
-            Some(F64NoNaN { value: value })
+            Ok(F64NoNaN { value })
         }
     }
 }

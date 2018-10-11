@@ -300,19 +300,27 @@ where
                 let r = self.resolve_value(rhs, source)?;
 
                 match op {
-                    BinaryOp::Equal => Ok(l.equals(&r)),
-                    BinaryOp::NotEqual => Ok(l.not_equals(&r)),
-                    BinaryOp::LessThan => Ok(l.less_than(&r)),
-                    BinaryOp::LessThanOrEqual => Ok(l.less_than_or_equal(&r)),
-                    BinaryOp::GreaterThan => Ok(l.greater_than(&r)),
-                    BinaryOp::GreaterThanOrEqual => Ok(l.greater_than_or_equal(&r)),
+                    BinaryOp::Equal => Ok(l.equals(&r).map_err(ExecuteError::from_string)?),
+                    BinaryOp::NotEqual => {
+                        Ok(l.not_equals(&r).map_err(ExecuteError::from_string)?)
+                    },
+                    BinaryOp::LessThan => Ok(l.less_than(&r).map_err(ExecuteError::from_string)?),
+                    BinaryOp::LessThanOrEqual => Ok(l
+                        .less_than_or_equal(&r)
+                        .map_err(ExecuteError::from_string)?),
+                    BinaryOp::GreaterThan => {
+                        Ok(l.greater_than(&r).map_err(ExecuteError::from_string)?)
+                    },
+                    BinaryOp::GreaterThanOrEqual => Ok(l
+                        .greater_than_or_equal(&r)
+                        .map_err(ExecuteError::from_string)?),
                     BinaryOp::And => Ok(l.and(&r)),
                     BinaryOp::Or => Ok(l.or(&r)),
-                    BinaryOp::Concatenate => Ok(l.concat(&r)),
-                    BinaryOp::Add => Ok(l.add(&r)),
-                    BinaryOp::Subtract => Ok(l.sub(&r)),
-                    BinaryOp::Multiply => Ok(l.mul(&r)),
-                    BinaryOp::Divide => Ok(l.div(&r)),
+                    BinaryOp::Concatenate => Ok(l.concat(&r).map_err(ExecuteError::from_string)?),
+                    BinaryOp::Add => Ok(l.add(&r).map_err(ExecuteError::from_string)?),
+                    BinaryOp::Subtract => Ok(l.sub(&r).map_err(ExecuteError::from_string)?),
+                    BinaryOp::Multiply => Ok(l.mul(&r).map_err(ExecuteError::from_string)?),
+                    BinaryOp::Divide => Ok(l.div(&r).map_err(ExecuteError::from_string)?),
                     op => Err(ExecuteError::from(NotImplemented(op.to_string()))),
                 }
             },
@@ -341,7 +349,7 @@ where
                             };
 
                             let v = self.resolve_value(value, Some(&new_source))?;
-                            op_functor.feed(v);
+                            op_functor.feed(v).map_err(ExecuteError::from_string)?;
                         }
 
                         Ok(op_functor.finish())
@@ -373,14 +381,14 @@ where
 
                 // yield_in_fn is expected to yield exactly one row
                 // yield_out_fn is expected to return a single resolved value
-                let mut r = None;
+                let mut result_row = None;
                 let mut row_count = 0;
 
                 self.execute(
                     yield_in_fn,
                     &mut |row| {
                         if row_count == 0 {
-                            r = Some(row.to_vec());
+                            result_row = Some(row.to_vec());
                         }
                         row_count += 1;
                         Ok(())
@@ -389,7 +397,8 @@ where
                 )?;
 
                 if row_count == 1 {
-                    let row = r.unwrap();
+                    let row = result_row
+                        .ok_or(ExecuteError::new("subquery must yield exactly one row"))?;
 
                     let new_source = Source {
                         parent: source,
@@ -399,9 +408,7 @@ where
 
                     self.resolve_value(yield_out_fn, Some(&new_source))
                 } else {
-                    Err(ExecuteError::from_string(format!(
-                        "subquery must yield exactly one row"
-                    )))
+                    Err(ExecuteError::new("subquery must yield exactly one row"))
                 }
             },
             &SExpression::Scan { .. } |
