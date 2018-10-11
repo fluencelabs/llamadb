@@ -42,7 +42,7 @@ impl From<LexerError> for ParseError {
 
 impl Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "Parse error: {}", self.message)
+        write!(f, self.message)
     }
 }
 
