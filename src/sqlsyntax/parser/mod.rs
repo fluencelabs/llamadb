@@ -9,7 +9,7 @@ mod tokens;
 use self::tokens::Tokens;
 use std::error::Error;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum RuleError {
     ExpectingFirst(&'static str, Option<Token>),
     Expecting(&'static str, Option<Token>),
@@ -25,12 +25,6 @@ impl fmt::Display for RuleError {
             &ExpectingFirst(s, None) => write!(f, "Expected {}; got no more tokens", s),
             &Expecting(s, None) => write!(f, "Expected {}; got no more tokens", s),
         }
-    }
-}
-
-impl fmt::Debug for RuleError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "{}", self)
     }
 }
 

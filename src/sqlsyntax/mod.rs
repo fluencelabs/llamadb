@@ -7,9 +7,27 @@ pub mod ast;
 pub mod lexer;
 pub mod parser;
 
-pub fn parse_statement(query: &str) -> Result<Statement, RuleError> {
+
+#[derive(PartialEq, Debug)]
+pub struct ParseError {
+    message: String
+}
+
+impl ParseError {
+    pub fn new(message: &'static str) -> Self {
+        ParseError{ message: message.to_string() }
+    }
+}
+
+impl From<RuleError> for ParseError {
+    fn from(err: RuleError) -> Self {
+       ParseError { message: err.to_string()}
+    }
+}
+
+pub fn parse_statement(query: &str) -> Result<Statement, ParseError> {
     let tokens = lexer::parse(query);
-    parser::parse_statement(&tokens)
+    parser::parse_statement(&tokens).map_err(Into::into)
 }
 
 pub fn parse_statements(query: &str) -> Vec<ast::Statement> {
@@ -60,6 +78,7 @@ mod test {
     use sqlsyntax::parser::RuleError::Expecting;
     use sqlsyntax::parser::RuleError::ExpectingFirst;
     use std::option::Option::Some;
+    use sqlsyntax::ParseError;
 
     #[test]
     fn create_table_parsing_test() {
@@ -455,24 +474,21 @@ mod test {
         match parse("") {
             Err(err) => assert_eq!(
                 err,
-                ExpectingFirst("SELECT, INSERT, CREATE, or EXPLAIN statement", None)
+                ParseError::new("Expected SELECT, INSERT, CREATE, or EXPLAIN statement; got no more tokens")
             ),
             st => panic!("Expected error but actually={:?}", st),
         }
         match parse("123") {
             Err(err) => assert_eq!(
                 err,
-                ExpectingFirst(
-                    "SELECT, INSERT, CREATE, or EXPLAIN statement",
-                    Some(Token::Number("123".to_string()))
-                )
+                ParseError::new("Expected SELECT, INSERT, CREATE, or EXPLAIN statement; got Number(\"123\")")
             ),
             st => panic!("Expected error but actually={:?}", st),
         }
         match parse("select select from USERS") {
             Err(err) => assert_eq!(
                 err,
-                Expecting("* or expression for SELECT column", Some(Token::Select))
+                ParseError::new("Expected * or expression for SELECT column; got Select")
             ),
             st => panic!("Expected error but actually={:?}", st),
         }

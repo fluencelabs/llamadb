@@ -16,7 +16,7 @@ impl<'a> Tokens<'a> {
     }
 
     pub fn new(tokens: &'a [Token]) -> Tokens<'a> {
-        Tokens { tokens: tokens }
+        Tokens { tokens }
     }
 
     pub fn expecting(&self, expecting_message: &'static str) -> RuleError {
