@@ -28,6 +28,8 @@ impl<T: ToString + Error> From<T> for ParseError {
     }
 }
 
+impl Error for ParseError {}
+
 /// Parses single sql statement and returns AST.
 pub fn parse_statement(query: &str) -> Result<Statement, ParseError> {
     let tokens = lexer::parse(query)?;
