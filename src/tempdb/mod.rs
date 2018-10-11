@@ -185,9 +185,11 @@ impl TempDb {
     }
 
     fn create_table(&mut self, stmt: ast::CreateTableStatement) -> ExecuteStatementResult {
-        stmt.table.database_name.ok_or(ExecuteError::new(
-            "Creating several databases is not supported.",
-        ))?;
+        if stmt.table.database_name.is_some() {
+            return Err(ExecuteError::new(
+                "Creating several databases is not supported.",
+            ));
+        }
 
         let table_name = Identifier::new(&stmt.table.table_name)
             .ok_or(ExecuteError::new("Table name is required."))?;
