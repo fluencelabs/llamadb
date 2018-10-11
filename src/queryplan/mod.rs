@@ -83,7 +83,7 @@ where
         let plan = {
             let compiler = QueryCompiler {
                 query_id: 0,
-                db: db,
+                db,
                 source_id_to_query_id: &mut source_id_to_query_id,
                 query_to_aggregated_source_id: &mut query_to_aggregated_source_id,
                 next_source_id: &mut next_source_id,
@@ -262,11 +262,11 @@ where
                             on,
                             right_rows_if_none,
                         } => SExpression::LeftJoin {
-                            source_id: source_id,
+                            source_id,
                             yield_in_fn: Box::new(table),
                             predicate: Box::new(on),
                             yield_out_fn: Box::new(nested_expr),
-                            right_rows_if_none: right_rows_if_none,
+                            right_rows_if_none,
                         },
                     });
 
@@ -283,13 +283,13 @@ where
     fn into_sexpr(self, nested_expr: SExpression<'a, DB>) -> SExpression<'a, DB> {
         match self {
             FromWhereTableOrSubquery::Subquery { source_id, expr } => SExpression::Map {
-                source_id: source_id,
+                source_id,
                 yield_in_fn: Box::new(expr),
                 yield_out_fn: Box::new(nested_expr),
             },
             FromWhereTableOrSubquery::Table { source_id, table } => SExpression::Scan {
-                source_id: source_id,
-                table: table,
+                source_id,
+                table,
                 yield_fn: Box::new(nested_expr),
             },
         }
@@ -309,8 +309,8 @@ where
         self.into_sexpr(SExpression::Yield {
             fields: (0..column_count)
                 .map(|column_offset| SExpression::ColumnField {
-                    source_id: source_id,
-                    column_offset: column_offset,
+                    source_id,
+                    column_offset,
                 }).collect(),
         })
     }
@@ -383,25 +383,23 @@ where
         // contain ON (conditional) expressions.
 
         let (new_scope, from_where) =
-            try!(self.from_where(stmt.from, stmt.where_expr, outer_scope, groups_info));
+            self.from_where(stmt.from, stmt.where_expr, outer_scope, groups_info)?;
 
         let (mut group_by_values, having_predicate) = if !stmt.group_by.is_empty() {
             let query_id = self.query_id;
             self.new_aggregated_source_id(query_id);
 
-            let group_by_values = try!(
-                stmt.group_by
-                    .into_iter()
-                    .map(|expr| self.ast_expression_to_sexpression(expr, &new_scope, groups_info))
-                    .collect()
-            );
+            let group_by_values = stmt.group_by
+                .into_iter()
+                .map(|expr| self.ast_expression_to_sexpression(expr, &new_scope, groups_info))
+                .collect()?;
 
             let having_predicate = if let Some(having) = stmt.having {
-                Some(try!(self.ast_expression_to_sexpression(
+                Some(self.ast_expression_to_sexpression(
                     having,
                     &new_scope,
                     groups_info
-                )))
+                )?)
             } else {
                 None
             };
@@ -412,7 +410,7 @@ where
         };
 
         let (column_names, select_exprs) =
-            try!(self.select(stmt.result_columns, &new_scope, groups_info));
+            self.select(stmt.result_columns, &new_scope, groups_info)?;
 
         let grouped_source_id = self
             .query_to_aggregated_source_id
@@ -429,8 +427,8 @@ where
 
                         (0..table.out_column_names.len() as u32).map(move |column_offset| {
                             SExpression::ColumnField {
-                                source_id: source_id,
-                                column_offset: column_offset,
+                                source_id,
+                                column_offset,
                             }
                         })
                     }).collect(),
@@ -446,7 +444,7 @@ where
                     .iter()
                     .map(|table| {
                         let m = Mapping {
-                            source_id: source_id,
+                            source_id,
                             column_offset: c,
                         };
 
@@ -477,9 +475,9 @@ where
             remap_columns_in_sexpression(&mut yield_out_fn, &mapping);
 
             SExpression::TempGroupBy {
-                source_id: source_id,
+                source_id,
                 yield_in_fn: Box::new(yield_in_fn),
-                group_by_values: group_by_values,
+                group_by_values,
                 yield_out_fn: Box::new(yield_out_fn),
             }
         } else {
@@ -489,7 +487,7 @@ where
         };
 
         Ok(QueryPlan {
-            expr: expr,
+            expr,
             out_column_names: column_names,
         })
     }
@@ -536,26 +534,26 @@ where
                         next_query_id: self.next_query_id,
                     };
 
-                    try!(compiler.compile(*subquery, scope, groups_info))
+                    compiler.compile(*subquery, scope, groups_info)?
                 };
-                let alias_identifier = try!(new_identifier(&alias));
+                let alias_identifier = new_identifier(&alias)?;
 
                 let source_id = self.new_source_id();
 
                 let s = TableOrSubquery {
-                    source_id: source_id,
+                    source_id,
                     out_column_names: plan.out_column_names,
                 };
 
                 let t = FromWhereTableOrSubquery::Subquery {
-                    source_id: source_id,
+                    source_id,
                     expr: plan.expr,
                 };
 
                 Ok(((s, t), alias_identifier))
             },
             ast::TableOrSubquery::Table { table, alias } => {
-                let table_name_identifier = try!(new_identifier(&table.table_name));
+                let table_name_identifier = new_identifier(&table.table_name)?;
                 let table = match self.db.find_table_by_name(&table_name_identifier) {
                     Some(table) => table,
                     None => {
@@ -566,7 +564,7 @@ where
                 };
 
                 let alias_identifier = if let Some(alias) = alias {
-                    try!(new_identifier(&alias))
+                    new_identifier(&alias)?
                 } else {
                     table_name_identifier
                 };
@@ -574,13 +572,13 @@ where
                 let source_id = self.new_source_id();
 
                 let s = TableOrSubquery {
-                    source_id: source_id,
+                    source_id,
                     out_column_names: table.get_column_names(),
                 };
 
                 let t = FromWhereTableOrSubquery::Table {
-                    source_id: source_id,
-                    table: table,
+                    source_id,
+                    table,
                 };
 
                 Ok(((s, t), alias_identifier))
@@ -595,15 +593,13 @@ where
         scope: &'b SourceScope<'b>,
         groups_info: &mut GroupsInfo,
     ) -> Result<(SourceScope<'b>, FromWhere<'a, DB>), QueryPlanCompileError> {
-        let a: Vec<_> = try!(
-            ast_cross_tables
-                .into_iter()
-                .map(|ast_table_or_subquery| self.ast_table_or_subquery_to(
-                    ast_table_or_subquery,
-                    scope,
-                    groups_info
-                )).collect()
-        );
+        let a: Vec<_> = ast_cross_tables
+            .into_iter()
+            .map(|ast_table_or_subquery| self.ast_table_or_subquery_to(
+                ast_table_or_subquery,
+                scope,
+                groups_info
+            )).collect()?;
 
         let (tables, table_aliases): (Vec<_>, _) = a.into_iter().unzip();
 
@@ -612,11 +608,11 @@ where
         let new_scope = SourceScope::new(Some(scope), source_tables, table_aliases);
 
         let where_expr = if let Some(where_expr) = where_expr {
-            Some(try!(self.ast_expression_to_sexpression(
+            Some(self.ast_expression_to_sexpression(
                 where_expr,
                 &new_scope,
                 groups_info
-            )))
+            )?)
         } else {
             None
         };
@@ -625,7 +621,7 @@ where
             new_scope,
             FromWhere::Cross {
                 tables: fromwhere_tables,
-                where_expr: where_expr,
+                where_expr,
             },
         ))
     }
@@ -639,69 +635,67 @@ where
         groups_info: &mut GroupsInfo,
     ) -> Result<(SourceScope<'b>, FromWhere<'a, DB>), QueryPlanCompileError> {
         let ((source_table, fromwhere_table), alias) =
-            try!(self.ast_table_or_subquery_to(table, scope, groups_info));
+            self.ast_table_or_subquery_to(table, scope, groups_info)?;
 
         let mut new_scope = SourceScope::new(Some(scope), vec![source_table], vec![alias]);
 
-        let j = try!(
-            joins
-                .into_iter()
-                .map(|join| {
-                    let ((source_table, fromwhere_table), alias) =
-                        try!(self.ast_table_or_subquery_to(join.table, scope, groups_info));
+        let j = joins
+            .into_iter()
+            .map(|join| {
+                let ((source_table, fromwhere_table), alias) =
+                    self.ast_table_or_subquery_to(join.table, scope, groups_info)?;
 
-                    match join.operator {
-                        ast::JoinOperator::Inner => {
-                            new_scope.tables.push(source_table);
-                            new_scope.table_aliases.push(alias);
+                match join.operator {
+                    ast::JoinOperator::Inner => {
+                        new_scope.tables.push(source_table);
+                        new_scope.table_aliases.push(alias);
 
-                            let on = try!(self.ast_expression_to_sexpression(
-                                join.on,
-                                &new_scope,
-                                groups_info
-                            ));
-                            Ok(FromWhereJoin::Inner {
-                                table: fromwhere_table,
-                                on: on,
-                            })
-                        },
-                        ast::JoinOperator::Left => {
-                            let source_id = self.new_source_id();
+                        let on = self.ast_expression_to_sexpression(
+                            join.on,
+                            &new_scope,
+                            groups_info
+                        )?;
+                        Ok(FromWhereJoin::Inner {
+                            table: fromwhere_table,
+                            on,
+                        })
+                    },
+                    ast::JoinOperator::Left => {
+                        let source_id = self.new_source_id();
 
-                            let left_join_source_table = TableOrSubquery {
-                                source_id: source_id,
-                                out_column_names: source_table.out_column_names,
-                            };
+                        let left_join_source_table = TableOrSubquery {
+                            source_id,
+                            out_column_names: source_table.out_column_names,
+                        };
 
-                            let column_count = left_join_source_table.out_column_names.len() as u32;
+                        let column_count = left_join_source_table.out_column_names.len() as u32;
 
-                            new_scope.tables.push(left_join_source_table);
-                            new_scope.table_aliases.push(alias);
+                        new_scope.tables.push(left_join_source_table);
+                        new_scope.table_aliases.push(alias);
 
-                            let on = try!(self.ast_expression_to_sexpression(
-                                join.on,
-                                &new_scope,
-                                groups_info
-                            ));
-                            Ok(FromWhereJoin::Left {
-                                source_id: source_id,
-                                table: fromwhere_table.yield_all_columns(column_count),
-                                on: on,
-                                right_rows_if_none: (0..column_count)
-                                    .map(|_| ColumnValueOpsExt::null())
-                                    .collect(),
-                            })
-                        },
-                    }
-                }).collect()
-        );
+                        let on = self.ast_expression_to_sexpression(
+                            join.on,
+                            &new_scope,
+                            groups_info
+                        )?;
+                        Ok(FromWhereJoin::Left {
+                            source_id,
+                            table: fromwhere_table.yield_all_columns(column_count),
+                            on,
+                            right_rows_if_none: (0..column_count)
+                                .map(|_| ColumnValueOpsExt::null())
+                                .collect(),
+                        })
+                    },
+                }
+            }).collect()?;
 
         let where_expr = if let Some(where_expr) = where_expr {
-            Some(try!(self.ast_expression_to_sexpression(
+            Some(self.ast_expression_to_sexpression(
                 where_expr,
                 &new_scope,
                 groups_info
-            )))
+            )?)
         } else {
             None
         };
@@ -711,7 +705,7 @@ where
             FromWhere::Join {
                 outer_table: fromwhere_table,
                 joins: j,
-                where_expr: where_expr,
+                where_expr,
             },
         ))
     }
@@ -749,7 +743,7 @@ where
                                 (
                                     name.clone(),
                                     SExpression::ColumnField {
-                                        source_id: source_id,
+                                        source_id,
                                         column_offset: i as u32,
                                     },
                                 )
@@ -758,18 +752,18 @@ where
                 },
                 ast::SelectColumn::Expr { expr, alias } => {
                     let column_name = if let Some(alias) = alias {
-                        try!(new_identifier(&alias))
+                        new_identifier(&alias)?
                     } else {
                         // if the expression is a simple identifier, make that
                         // the column name. else, assign an arbitrary name.
                         if let &ast::Expression::Ident(ref n) = &expr {
-                            try!(new_identifier(n))
+                            new_identifier(n)?
                         } else {
                             arbitrary_column_name()
                         }
                     };
 
-                    let e = try!(self.ast_expression_to_sexpression(expr, &scope, groups_info));
+                    let e = self.ast_expression_to_sexpression(expr, &scope, groups_info)?;
                     a.push((column_name, e));
                 },
             }
@@ -786,7 +780,7 @@ where
     ) -> Result<SExpression<'a, DB>, QueryPlanCompileError> {
         match ast {
             ast::Expression::Ident(s) => {
-                let column_identifier = try!(new_identifier(&s));
+                let column_identifier = new_identifier(&s)?;
 
                 let (source_id, column_offset) = match scope.get_column_offset(&column_identifier) {
                     GetColumnOffsetResult::One(v) => v,
@@ -803,13 +797,13 @@ where
                 groups_info.add_query_id(self.get_query_id_from_source_id(source_id));
 
                 Ok(SExpression::ColumnField {
-                    source_id: source_id,
-                    column_offset: column_offset,
+                    source_id,
+                    column_offset,
                 })
             },
             ast::Expression::IdentMember(s1, s2) => {
-                let table_identifier = try!(new_identifier(&s1));
-                let column_identifier = try!(new_identifier(&s2));
+                let table_identifier = new_identifier(&s1)?;
+                let column_identifier = new_identifier(&s2)?;
 
                 let (source_id, column_offset) =
                     match scope.get_table_column_offset(&table_identifier, &column_identifier) {
@@ -827,12 +821,12 @@ where
                 groups_info.add_query_id(self.get_query_id_from_source_id(source_id));
 
                 Ok(SExpression::ColumnField {
-                    source_id: source_id,
-                    column_offset: column_offset,
+                    source_id,
+                    column_offset,
                 })
             },
             ast::Expression::UnaryOp { expr, op } => {
-                let e = try!(self.ast_expression_to_sexpression(*expr, scope, groups_info));
+                let e = self.ast_expression_to_sexpression(*expr, scope, groups_info)?;
 
                 Ok(SExpression::UnaryOp {
                     op: ast_unaryop_to_sexpression_unaryop(op),
@@ -840,8 +834,8 @@ where
                 })
             },
             ast::Expression::BinaryOp { lhs, rhs, op } => {
-                let l = try!(self.ast_expression_to_sexpression(*lhs, scope, groups_info));
-                let r = try!(self.ast_expression_to_sexpression(*rhs, scope, groups_info));
+                let l = self.ast_expression_to_sexpression(*lhs, scope, groups_info)?;
+                let r = self.ast_expression_to_sexpression(*rhs, scope, groups_info)?;
 
                 Ok(SExpression::BinaryOp {
                     op: ast_binaryop_to_sexpression_binaryop(op),
@@ -872,19 +866,19 @@ where
                     next_query_id: self.next_query_id,
                 };
 
-                let plan = try!(compiler.compile(*subquery, scope, groups_info));
+                let plan = compiler.compile(*subquery, scope, groups_info)?;
 
                 Ok(SExpression::Map {
-                    source_id: source_id,
+                    source_id,
                     yield_in_fn: Box::new(plan.expr),
                     yield_out_fn: Box::new(SExpression::ColumnField {
-                        source_id: source_id,
+                        source_id,
                         column_offset: 0,
                     }),
                 })
             },
             ast::Expression::FunctionCall { name, arguments } => {
-                let ident = try!(new_identifier(&name));
+                let ident = new_identifier(&name)?;
 
                 macro_rules! aggregate {
                     ($op:expr) => (
@@ -930,7 +924,7 @@ where
                 }
             },
             ast::Expression::FunctionCallAggregateAll { name } => {
-                let ident = try!(new_identifier(&name));
+                let ident = new_identifier(&name)?;
 
                 match &ident as &str {
                     "count" => {
@@ -938,7 +932,7 @@ where
                         let source_id = self.new_aggregated_source_id(query_id);
 
                         Ok(SExpression::CountAll {
-                            source_id: source_id,
+                            source_id,
                         })
                     },
                     _ => Err(QueryPlanCompileError::AggregateAllMustBeCount(ident)),
@@ -1078,8 +1072,8 @@ where
             .map(|n| format!("`{}`", n))
             .collect();
 
-        try!(writeln!(f, "query plan"));
-        try!(writeln!(f, "column names: ({})", cn.join(", ")));
+        writeln!(f, "query plan")?;
+        writeln!(f, "column names: ({})", cn.join(", "))?;
         self.expr.fmt(f)
     }
 }
