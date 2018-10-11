@@ -1,5 +1,9 @@
 use sqlsyntax::ast::Statement;
+use sqlsyntax::lexer::LexerError;
+use sqlsyntax::parser::RuleError;
 use std::error::Error;
+use std::fmt;
+use std::fmt::Display;
 
 /// As of writing, there aren't any good or stable LALR(1) parser generators for Rust.
 /// As a consequence, the lexer and parser are both written by hand.
@@ -20,11 +24,25 @@ impl ParseError {
     }
 }
 
-impl<T: ToString + Error> From<T> for ParseError {
-    fn from(err: T) -> Self {
+impl From<RuleError> for ParseError {
+    fn from(err: RuleError) -> Self {
         ParseError {
             message: err.to_string(),
         }
+    }
+}
+
+impl From<LexerError> for ParseError {
+    fn from(err: LexerError) -> Self {
+        ParseError {
+            message: err.to_string(),
+        }
+    }
+}
+
+impl Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "Parse error: {}", self.message)
     }
 }
 
