@@ -1,7 +1,4 @@
 use sqlsyntax::ast::Statement;
-use sqlsyntax::parser::RuleError;
-use sqlsyntax::lexer::LexerError;
-use std::fmt::Display;
 use std::error::Error;
 
 /// As of writing, there aren't any good or stable LALR(1) parser generators for Rust.
@@ -10,31 +7,37 @@ pub mod ast;
 pub mod lexer;
 pub mod parser;
 
-
 #[derive(PartialEq, Debug)]
 pub struct ParseError {
-    message: String
+    message: String,
 }
 
 impl ParseError {
     pub fn new(message: &'static str) -> Self {
-        ParseError{ message: message.to_string() }
+        ParseError {
+            message: message.to_string(),
+        }
     }
 }
 
 impl<T: ToString + Error> From<T> for ParseError {
     fn from(err: T) -> Self {
-       ParseError { message: err.to_string() }
+        ParseError {
+            message: err.to_string(),
+        }
     }
 }
 
+/// Parses single sql statement and returns AST.
 pub fn parse_statement(query: &str) -> Result<Statement, ParseError> {
-    let tokens = lexer::parse(query);
+    let tokens = lexer::parse(query)?;
     parser::parse_statement(&tokens).map_err(Into::into)
 }
 
-pub fn parse_statements(query: &str) -> Result<Vec<ast::Statement>, ParseError>  {
-    let tokens = lexer::parse(query);
+/// Parses a series of sql statements separated by semicolons and returns
+/// sequence of corresponded AST representations.
+pub fn parse_statements(query: &str) -> Result<Vec<ast::Statement>, ParseError> {
+    let tokens = lexer::parse(query)?;
     parser::parse_statements(&tokens).map_err(Into::into)
 }
 
@@ -77,11 +80,8 @@ mod test {
     use sqlsyntax::ast::Table;
     use sqlsyntax::ast::TableOrSubquery;
     use sqlsyntax::ast::TableOrSubquery::Subquery;
-    use sqlsyntax::lexer::Token;
-    use sqlsyntax::parser::RuleError::Expecting;
-    use sqlsyntax::parser::RuleError::ExpectingFirst;
-    use std::option::Option::Some;
     use sqlsyntax::ParseError;
+    use std::option::Option::Some;
 
     #[test]
     fn create_table_parsing_test() {
@@ -477,14 +477,18 @@ mod test {
         match parse("") {
             Err(err) => assert_eq!(
                 err,
-                ParseError::new("Expected SELECT, INSERT, CREATE, or EXPLAIN statement; got no more tokens")
+                ParseError::new(
+                    "Expected SELECT, INSERT, CREATE, or EXPLAIN statement; got no more tokens"
+                )
             ),
             st => panic!("Expected error but actually={:?}", st),
         }
         match parse("123") {
             Err(err) => assert_eq!(
                 err,
-                ParseError::new("Expected SELECT, INSERT, CREATE, or EXPLAIN statement; got Number(\"123\")")
+                ParseError::new(
+                    "Expected SELECT, INSERT, CREATE, or EXPLAIN statement; got Number(\"123\")"
+                )
             ),
             st => panic!("Expected error but actually={:?}", st),
         }
@@ -493,6 +497,14 @@ mod test {
                 err,
                 ParseError::new("Expected * or expression for SELECT column; got Select")
             ),
+            st => panic!("Expected error but actually={:?}", st),
+        }
+    }
+
+    #[test]
+    fn lexer_error_test() {
+        match parse("†††") {
+            Err(err) => assert_eq!(err, ParseError::new("Lexer error: Unknown character †")),
             st => panic!("Expected error but actually={:?}", st),
         }
     }
