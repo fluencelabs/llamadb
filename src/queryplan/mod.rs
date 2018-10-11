@@ -24,6 +24,7 @@ pub enum QueryPlanCompileError {
     AggregateFunctionRequiresOneArgument,
     AggregateFunctionHasNoQueryToAggregate,
     AggregateAllMustBeCount(Identifier),
+    NotImplemented(String),
 }
 
 impl fmt::Display for QueryPlanCompileError {
@@ -47,6 +48,7 @@ impl fmt::Display for QueryPlanCompileError {
             &AggregateAllMustBeCount(ref name) => {
                 write!(f, "aggregate (*) function must be `count` (found {})", name)
             },
+            &NotImplemented(ref name) => write!(f, "{} in not implemented", name),
         }
     }
 }
@@ -372,10 +374,11 @@ where
         outer_scope: &'b SourceScope<'b>,
         groups_info: &mut GroupsInfo,
     ) -> Result<QueryPlan<'a, DB>, QueryPlanCompileError> {
-        // Unimplemented syntaxes: ORDER BY
         // TODO - implement them!
         if !stmt.order_by.is_empty() {
-            unimplemented!()
+            return Err(QueryPlanCompileError::NotImplemented(
+                "order by".to_string(),
+            ));
         }
 
         // FROM and WHERE are compiled together.

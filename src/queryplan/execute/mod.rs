@@ -8,6 +8,7 @@ use self::aggregate::*;
 
 mod groupbuckets;
 use self::groupbuckets::GroupBuckets;
+use queryplan::QueryPlanCompileError::NotImplemented;
 use tempdb::ExecuteError;
 
 enum SourceType<'a, ColumnValue: Sized + 'static> {
@@ -298,22 +299,22 @@ where
                 let l = self.resolve_value(lhs, source)?;
                 let r = self.resolve_value(rhs, source)?;
 
-                Ok(match op {
-                    BinaryOp::Equal => l.equals(&r),
-                    BinaryOp::NotEqual => l.not_equals(&r),
-                    BinaryOp::LessThan => l.less_than(&r),
-                    BinaryOp::LessThanOrEqual => l.less_than_or_equal(&r),
-                    BinaryOp::GreaterThan => l.greater_than(&r),
-                    BinaryOp::GreaterThanOrEqual => l.greater_than_or_equal(&r),
-                    BinaryOp::And => l.and(&r),
-                    BinaryOp::Or => l.or(&r),
-                    BinaryOp::Concatenate => l.concat(&r),
-                    BinaryOp::Add => l.add(&r),
-                    BinaryOp::Subtract => l.sub(&r),
-                    BinaryOp::Multiply => l.mul(&r),
-                    BinaryOp::Divide => l.div(&r),
-                    _ => unimplemented!(),
-                })
+                match op {
+                    BinaryOp::Equal => Ok(l.equals(&r)),
+                    BinaryOp::NotEqual => Ok(l.not_equals(&r)),
+                    BinaryOp::LessThan => Ok(l.less_than(&r)),
+                    BinaryOp::LessThanOrEqual => Ok(l.less_than_or_equal(&r)),
+                    BinaryOp::GreaterThan => Ok(l.greater_than(&r)),
+                    BinaryOp::GreaterThanOrEqual => Ok(l.greater_than_or_equal(&r)),
+                    BinaryOp::And => Ok(l.and(&r)),
+                    BinaryOp::Or => Ok(l.or(&r)),
+                    BinaryOp::Concatenate => Ok(l.concat(&r)),
+                    BinaryOp::Add => Ok(l.add(&r)),
+                    BinaryOp::Subtract => Ok(l.sub(&r)),
+                    BinaryOp::Multiply => Ok(l.mul(&r)),
+                    BinaryOp::Divide => Ok(l.div(&r)),
+                    op => Err(ExecuteError::from(NotImplemented(op.to_string()))),
+                }
             },
             &SExpression::UnaryOp { op, ref expr } => {
                 let e = self.resolve_value(expr, source)?;
