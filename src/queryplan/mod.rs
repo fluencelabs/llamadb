@@ -151,9 +151,9 @@ impl GroupsInfo {
         if self.innermost_nonaggregated_query.is_none() {
             self.innermost_nonaggregated_query = Some(query_id);
         } else {
-            if query_id > self.innermost_nonaggregated_query.unwrap() {
-                self.innermost_nonaggregated_query = Some(query_id);
-            }
+            self.innermost_nonaggregated_query
+                .filter(|q| query_id > *q)
+                .map(|_| self.innermost_nonaggregated_query = Some(query_id));
         }
     }
 }
@@ -1056,3 +1056,5 @@ where
         self.expr.fmt(f)
     }
 }
+
+// todo write tests

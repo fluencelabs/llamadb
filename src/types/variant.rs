@@ -49,7 +49,7 @@ impl ColumnValueOps for Variant {
         } else if let Ok(number) = string.parse() {
             Ok(Variant::UnsignedInteger(number))
         } else if let Ok(number) = string.parse() {
-            Ok(Variant::Float(F64NoNaN::new(number).unwrap()))
+            Ok(Variant::Float(F64NoNaN::new(number)?))
         } else {
             Err(string)
         }
@@ -106,7 +106,7 @@ impl ColumnValueOps for Variant {
             },
             DbType::F64 => {
                 let f = byteutils::read_dbfloat(&bytes);
-                Ok(Variant::Float(F64NoNaN::new(f).unwrap()))
+                Ok(Variant::Float(F64NoNaN::new(f)?))
             },
             DbType::String => {
                 let len = bytes.len();
@@ -330,9 +330,7 @@ impl ColumnValueOps for Variant {
             (&Variant::SignedInteger(l), Variant::SignedInteger(r)) => {
                 Variant::SignedInteger(l + r)
             },
-            (&Variant::Float(l), Variant::Float(r)) => {
-                Variant::Float(F64NoNaN::new(*l + *r).unwrap())
-            },
+            (&Variant::Float(l), Variant::Float(r)) => Variant::Float(F64NoNaN::new(*l + *r)?),
             _ => self.clone(),
         })
     }
@@ -347,9 +345,7 @@ impl ColumnValueOps for Variant {
             (&Variant::SignedInteger(l), Variant::SignedInteger(r)) => {
                 Variant::SignedInteger(l - r)
             },
-            (&Variant::Float(l), Variant::Float(r)) => {
-                Variant::Float(F64NoNaN::new(*l - *r).unwrap())
-            },
+            (&Variant::Float(l), Variant::Float(r)) => Variant::Float(F64NoNaN::new(*l - *r)?),
             _ => self.clone(),
         })
     }
@@ -364,9 +360,7 @@ impl ColumnValueOps for Variant {
             (&Variant::SignedInteger(l), Variant::SignedInteger(r)) => {
                 Variant::SignedInteger(l * r)
             },
-            (&Variant::Float(l), Variant::Float(r)) => {
-                Variant::Float(F64NoNaN::new(*l * *r).unwrap())
-            },
+            (&Variant::Float(l), Variant::Float(r)) => Variant::Float(F64NoNaN::new(*l * *r)?),
             _ => self.clone(),
         })
     }
@@ -385,10 +379,10 @@ impl ColumnValueOps for Variant {
                 Variant::SignedInteger(l / r)
             },
             (&Variant::Float(l), Variant::Float(r)) => {
-                if r == F64NoNaN::new(0.0).unwrap() {
+                if r == F64NoNaN::new(0.0)? {
                     Variant::Null
                 } else {
-                    Variant::Float(F64NoNaN::new(*l / *r).unwrap())
+                    Variant::Float(F64NoNaN::new(*l / *r)?)
                 }
             },
             _ => self.clone(),

@@ -429,7 +429,9 @@ fn variant_to_data(
             "cannot insert NULL into column that doesn't allow NULL"
         ))),
         (false, nullable) => {
-            let bytes = value.to_bytes(column_type).unwrap();
+            let bytes = value
+                .to_bytes(column_type)
+                .map_err(ExecuteError::from_string)?;
             buf.extend_from_slice(&bytes);
 
             Ok(if nullable { Some(false) } else { None })
