@@ -43,15 +43,15 @@ impl ColumnValueOps for Variant {
         Ok(Variant::StringLiteral(s.into_owned()))
     }
 
-    fn from_number_literal(s: Cow<str>) -> Result<Variant, Cow<str>> {
-        if let Ok(number) = s.parse() {
+    fn from_number_literal(string: Cow<str>) -> Result<Variant, Cow<str>> {
+        if let Ok(number) = string.parse() {
             Ok(Variant::SignedInteger(number))
-        } else if let Ok(number) = s.parse() {
+        } else if let Ok(number) = string.parse() {
             Ok(Variant::UnsignedInteger(number))
-        } else if let Ok(number) = s.parse() {
-            Ok(Variant::Float(F64NoNaN::new(number).unwrap()))
+        } else if let Ok(number) = string.parse() {
+            Ok(Variant::Float(F64NoNaN::new(number)?))
         } else {
-            Err(s)
+            Err(string)
         }
     }
 
@@ -59,12 +59,10 @@ impl ColumnValueOps for Variant {
         Variant::Float(F64NoNaN::new(value).unwrap())
     }
 
-    fn to_f64(self) -> Result<f64, ()> {
-        let num = self.cast(DbType::F64);
-        if let Some(Variant::Float(float)) = num {
-            Ok(*float)
-        } else {
-            Err(())
+    fn to_f64(&self) -> Result<f64, String> {
+        match self.cast(DbType::F64)? {
+            Variant::Float(float) => Ok(*float),
+            var => Err(format!("Expected Float, actually {}", var)),
         }
     }
 
@@ -72,33 +70,32 @@ impl ColumnValueOps for Variant {
         Variant::UnsignedInteger(value)
     }
 
-    fn to_u64(self) -> Result<u64, ()> {
+    fn to_u64(&self) -> Result<u64, String> {
         let num = self.cast(DbType::Integer {
             signed: false,
             bytes: 8,
-        });
-        if let Some(Variant::UnsignedInteger(i)) = num {
-            Ok(i)
-        } else {
-            Err(())
+        })?;
+
+        match num {
+            Variant::UnsignedInteger(int) => Ok(int),
+            var => Err(format!("Expected UnsignedInteger, actually {}", var)),
         }
     }
 
-    // todo add informative Error instead ()
-    fn from_bytes(dbtype: DbType, bytes: Cow<[u8]>) -> Result<Variant, ()> {
+    fn from_bytes(dbtype: DbType, bytes: Cow<[u8]>) -> Result<Variant, String> {
         match dbtype {
             DbType::Null => Ok(Variant::Null),
             DbType::ByteDynamic => Ok(Variant::Bytes(bytes.into_owned())),
             DbType::ByteFixed(n) => {
                 if bytes.len() as u64 != n {
-                    Err(())
+                    Err(format!("{:?} cannot be converted to {:?}", bytes, dbtype))
                 } else {
                     Ok(Variant::Bytes(bytes.into_owned()))
                 }
             },
             DbType::Integer { signed, bytes: n } => {
                 if bytes.len() != n as usize {
-                    Err(())
+                    Err(format!("{:?} cannot be converted to {:?}", bytes, dbtype))
                 } else {
                     if signed {
                         Ok(Variant::SignedInteger(byteutils::read_sdbinteger(&bytes)))
@@ -109,7 +106,7 @@ impl ColumnValueOps for Variant {
             },
             DbType::F64 => {
                 let f = byteutils::read_dbfloat(&bytes);
-                Ok(Variant::Float(F64NoNaN::new(f).unwrap()))
+                Ok(Variant::Float(F64NoNaN::new(f)?))
             },
             DbType::String => {
                 let len = bytes.len();
@@ -117,22 +114,19 @@ impl ColumnValueOps for Variant {
                     let s = String::from_utf8_lossy(&bytes[0..len - 1]);
                     Ok(Variant::StringLiteral(s.into_owned()))
                 } else {
-                    Err(())
+                    Err(format!("{:?} cannot be converted to {:?}", bytes, dbtype))
                 }
             },
         }
     }
 
-    fn to_bytes(self, dbtype: DbType) -> Result<Box<[u8]>, ()> {
-        let s = match self.cast(dbtype) {
-            Some(s) => s,
-            None => return Err(()),
-        };
+    fn to_bytes(&self, dbtype: DbType) -> Result<Box<[u8]>, String> {
+        let bytes = self.cast(dbtype)?;
 
-        match (s, dbtype) {
+        match (bytes, dbtype) {
             (Variant::Null, DbType::Null) => {
                 // NULL has no data.
-                Err(())
+                Err(format!("{:?} cannot be converted to bytes", dbtype))
             },
             (Variant::Bytes(v), DbType::ByteDynamic) => Ok(v.into_boxed_slice()),
             (Variant::StringLiteral(s), DbType::String) => {
@@ -165,7 +159,7 @@ impl ColumnValueOps for Variant {
                 byteutils::write_dbfloat(*v, &mut buf);
                 Ok(Box::new(buf))
             },
-            _ => Err(()),
+            _ => Err(format!("{:?} cannot be converted to bytes", dbtype)),
         }
     }
 
@@ -218,210 +212,181 @@ impl ColumnValueOps for Variant {
     // -1: self < rhs
     // 0: self == rhs
     // 1: self > rhs
-    fn compare(&self, rhs: &Self) -> Option<i8> {
+    fn compare(&self, rhs: &Self) -> Result<Option<i8>, String> {
         let dbtype = self.get_dbtype();
-        if let Some(r) = rhs.clone().cast(dbtype) {
-            match (self, &r) {
-                (&Variant::Null, _) | (_, &Variant::Null) => None,
-                (&Variant::UnsignedInteger(l), &Variant::UnsignedInteger(r)) => Some(if l < r {
-                    -1
-                } else if l > r {
-                    1
-                } else {
-                    0
-                }),
-                (&Variant::SignedInteger(l), &Variant::SignedInteger(r)) => Some(if l < r {
-                    -1
-                } else if l > r {
-                    1
-                } else {
-                    0
-                }),
-                (&Variant::Float(l), &Variant::Float(r)) => Some(if l < r {
-                    -1
-                } else if l > r {
-                    1
-                } else {
-                    0
-                }),
-                (&Variant::Bytes(ref l), &Variant::Bytes(ref r)) => Some(if l < r {
-                    -1
-                } else if l > r {
-                    1
-                } else {
-                    0
-                }),
-                (&Variant::StringLiteral(ref l), &Variant::StringLiteral(ref r)) => {
-                    Some(if l < r {
-                        -1
-                    } else if l > r {
-                        1
-                    } else {
-                        0
-                    })
-                },
-                _ => unreachable!(),
-            }
-        } else {
-            None
-        }
+        let var = rhs.clone().cast(dbtype)?;
+
+        let result = match (self, &var) {
+            (&Variant::Null, _) | (_, &Variant::Null) => None,
+            (&Variant::UnsignedInteger(l), &Variant::UnsignedInteger(r)) => Some(if l < r {
+                -1
+            } else if l > r {
+                1
+            } else {
+                0
+            }),
+            (&Variant::SignedInteger(l), &Variant::SignedInteger(r)) => Some(if l < r {
+                -1
+            } else if l > r {
+                1
+            } else {
+                0
+            }),
+            (&Variant::Float(l), &Variant::Float(r)) => Some(if l < r {
+                -1
+            } else if l > r {
+                1
+            } else {
+                0
+            }),
+            (&Variant::Bytes(ref l), &Variant::Bytes(ref r)) => Some(if l < r {
+                -1
+            } else if l > r {
+                1
+            } else {
+                0
+            }),
+            (&Variant::StringLiteral(ref l), &Variant::StringLiteral(ref r)) => Some(if l < r {
+                -1
+            } else if l > r {
+                1
+            } else {
+                0
+            }),
+            _ => unreachable!(),
+        };
+
+        Ok(result)
     }
 
-    fn cast(self, dbtype: DbType) -> Option<Self> {
+    fn cast(&self, dbtype: DbType) -> Result<Self, String> {
         match (self, dbtype) {
             (e @ Variant::Null, DbType::Null) |
             (e @ Variant::Bytes(_), DbType::ByteDynamic) |
             (e @ Variant::StringLiteral(_), DbType::String) |
             (e @ Variant::SignedInteger(_), DbType::Integer { signed: true, .. }) |
             (e @ Variant::UnsignedInteger(_), DbType::Integer { signed: false, .. }) |
-            (e @ Variant::Float(_), DbType::F64) => Some(e),
+            (e @ Variant::Float(_), DbType::F64) => Ok(e.clone()),
             (e, DbType::String) => {
                 // every variant can be converted to a string
-                Some(Variant::StringLiteral(e.to_string()))
+                Ok(Variant::StringLiteral(e.to_string()))
             },
             (e, DbType::ByteDynamic) => {
                 // every variant can be converted to their byte representation
-                let dbtype = e.get_dbtype();
-                match e.to_bytes(dbtype) {
-                    Ok(bytes) => Some(Variant::Bytes(bytes.into_vec())),
-                    Err(()) => None,
-                }
+                e.to_bytes(e.get_dbtype())
+                    .map(|b| Variant::Bytes(b.into_vec()))
             },
             (Variant::Bytes(bytes), v) => {
                 // every variant can be converted from their byte representation
                 let r: &[u8] = &bytes;
-                match ColumnValueOps::from_bytes(v, r.into()) {
-                    Ok(s) => Some(s),
-                    Err(()) => None,
-                }
+                ColumnValueOps::from_bytes(v, r.into())
             },
             (Variant::Float(float), DbType::Integer { signed, .. }) => {
                 // truncates
                 if signed {
-                    Some(Variant::SignedInteger(*float as i64))
+                    Ok(Variant::SignedInteger(**float as i64))
                 } else {
-                    Some(Variant::UnsignedInteger(*float as u64))
+                    Ok(Variant::UnsignedInteger(**float as u64))
                 }
             },
             // TODO: overflow checks!
             (Variant::UnsignedInteger(integer), DbType::F64) => {
-                Some(Variant::Float(F64NoNaN::new(integer as f64).unwrap()))
+                Ok(Variant::Float(F64NoNaN::new(*integer as f64)?))
             },
             (Variant::SignedInteger(integer), DbType::F64) => {
-                Some(Variant::Float(F64NoNaN::new(integer as f64).unwrap()))
+                Ok(Variant::Float(F64NoNaN::new(*integer as f64)?))
             },
             (Variant::UnsignedInteger(integer), DbType::Integer { signed: true, .. }) => {
-                Some(Variant::SignedInteger(integer as i64))
+                Ok(Variant::SignedInteger(*integer as i64))
             },
             (Variant::SignedInteger(integer), DbType::Integer { signed: false, .. }) => {
-                Some(Variant::UnsignedInteger(integer as u64))
+                Ok(Variant::UnsignedInteger(*integer as u64))
             },
-            _ => None,
+            (v, t) => Err(format!("'{:?}' cannot be cast to {:?}", v, t)),
         }
     }
 
-    fn concat(&self, rhs: &Self) -> Self {
-        match (self, rhs) {
+    fn concat(&self, rhs: &Self) -> Result<Self, String> {
+        Ok(match (self, rhs) {
             (&Variant::StringLiteral(ref l), &Variant::StringLiteral(ref r)) => {
                 Variant::StringLiteral(format!("{}{}", l, r))
             },
-            (e @ &Variant::StringLiteral(_), rhs) => match rhs.clone().cast(DbType::String) {
-                Some(r) => e.concat(&r),
-                None => e.clone(),
+            (e @ &Variant::StringLiteral(_), rhs) => {
+                let it = rhs.clone().cast(DbType::String)?;
+                e.concat(&it)?
             },
             (e, _) => e.clone(),
-        }
+        })
     }
 
-    fn add(&self, rhs: &Self) -> Self {
+    fn add(&self, rhs: &Self) -> Result<Self, String> {
         // TODO: treat overflow!
         let dbtype = self.get_dbtype();
-        if let Some(r) = rhs.clone().cast(dbtype) {
-            match (self, r) {
-                (&Variant::UnsignedInteger(l), Variant::UnsignedInteger(r)) => {
-                    Variant::UnsignedInteger(l + r)
-                },
-                (&Variant::SignedInteger(l), Variant::SignedInteger(r)) => {
-                    Variant::SignedInteger(l + r)
-                },
-                (&Variant::Float(l), Variant::Float(r)) => {
-                    Variant::Float(F64NoNaN::new(*l + *r).unwrap())
-                },
-                _ => self.clone(),
-            }
-        } else {
-            self.clone()
-        }
+
+        Ok(match (self, rhs.clone().cast(dbtype)?) {
+            (&Variant::UnsignedInteger(l), Variant::UnsignedInteger(r)) => {
+                Variant::UnsignedInteger(l + r)
+            },
+            (&Variant::SignedInteger(l), Variant::SignedInteger(r)) => {
+                Variant::SignedInteger(l + r)
+            },
+            (&Variant::Float(l), Variant::Float(r)) => Variant::Float(F64NoNaN::new(*l + *r)?),
+            _ => self.clone(),
+        })
     }
 
-    fn sub(&self, rhs: &Self) -> Self {
+    fn sub(&self, rhs: &Self) -> Result<Self, String> {
         // TODO: treat overflow!
         let dbtype = self.get_dbtype();
-        if let Some(r) = rhs.clone().cast(dbtype) {
-            match (self, r) {
-                (&Variant::UnsignedInteger(l), Variant::UnsignedInteger(r)) => {
-                    Variant::UnsignedInteger(l - r)
-                },
-                (&Variant::SignedInteger(l), Variant::SignedInteger(r)) => {
-                    Variant::SignedInteger(l - r)
-                },
-                (&Variant::Float(l), Variant::Float(r)) => {
-                    Variant::Float(F64NoNaN::new(*l - *r).unwrap())
-                },
-                _ => self.clone(),
-            }
-        } else {
-            self.clone()
-        }
+        Ok(match (self, rhs.clone().cast(dbtype)?) {
+            (&Variant::UnsignedInteger(l), Variant::UnsignedInteger(r)) => {
+                Variant::UnsignedInteger(l - r)
+            },
+            (&Variant::SignedInteger(l), Variant::SignedInteger(r)) => {
+                Variant::SignedInteger(l - r)
+            },
+            (&Variant::Float(l), Variant::Float(r)) => Variant::Float(F64NoNaN::new(*l - *r)?),
+            _ => self.clone(),
+        })
     }
 
-    fn mul(&self, rhs: &Self) -> Self {
+    fn mul(&self, rhs: &Self) -> Result<Self, String> {
         // TODO: treat overflow!
         let dbtype = self.get_dbtype();
-        if let Some(r) = rhs.clone().cast(dbtype) {
-            match (self, r) {
-                (&Variant::UnsignedInteger(l), Variant::UnsignedInteger(r)) => {
-                    Variant::UnsignedInteger(l * r)
-                },
-                (&Variant::SignedInteger(l), Variant::SignedInteger(r)) => {
-                    Variant::SignedInteger(l * r)
-                },
-                (&Variant::Float(l), Variant::Float(r)) => {
-                    Variant::Float(F64NoNaN::new(*l * *r).unwrap())
-                },
-                _ => self.clone(),
-            }
-        } else {
-            self.clone()
-        }
+        Ok(match (self, rhs.clone().cast(dbtype)?) {
+            (&Variant::UnsignedInteger(l), Variant::UnsignedInteger(r)) => {
+                Variant::UnsignedInteger(l * r)
+            },
+            (&Variant::SignedInteger(l), Variant::SignedInteger(r)) => {
+                Variant::SignedInteger(l * r)
+            },
+            (&Variant::Float(l), Variant::Float(r)) => Variant::Float(F64NoNaN::new(*l * *r)?),
+            _ => self.clone(),
+        })
     }
 
-    fn div(&self, rhs: &Self) -> Self {
+    fn div(&self, rhs: &Self) -> Result<Self, String> {
         // TODO: treat overflow!
         let dbtype = self.get_dbtype();
-        if let Some(r) = rhs.clone().cast(dbtype) {
-            match (self, r) {
-                (&Variant::UnsignedInteger(_), Variant::UnsignedInteger(0)) => Variant::Null,
-                (&Variant::SignedInteger(_), Variant::SignedInteger(0)) => Variant::Null,
+        Ok(match (self, rhs.clone().cast(dbtype)?) {
+            (&Variant::UnsignedInteger(_), Variant::UnsignedInteger(0)) => Variant::Null,
+            (&Variant::SignedInteger(_), Variant::SignedInteger(0)) => Variant::Null,
 
-                (&Variant::UnsignedInteger(l), Variant::UnsignedInteger(r)) => {
-                    Variant::UnsignedInteger(l / r)
-                },
-                (&Variant::SignedInteger(l), Variant::SignedInteger(r)) => {
-                    Variant::SignedInteger(l / r)
-                },
-                (&Variant::Float(l), Variant::Float(r)) => {
-                    if r == F64NoNaN::new(0.0).unwrap() {
-                        Variant::Null
-                    } else {
-                        Variant::Float(F64NoNaN::new(*l / *r).unwrap())
-                    }
-                },
-                _ => self.clone(),
-            }
-        } else {
-            self.clone()
-        }
+            (&Variant::UnsignedInteger(l), Variant::UnsignedInteger(r)) => {
+                Variant::UnsignedInteger(l / r)
+            },
+            (&Variant::SignedInteger(l), Variant::SignedInteger(r)) => {
+                Variant::SignedInteger(l / r)
+            },
+            (&Variant::Float(l), Variant::Float(r)) => {
+                if r == F64NoNaN::new(0.0)? {
+                    Variant::Null
+                } else {
+                    Variant::Float(F64NoNaN::new(*l / *r)?)
+                }
+            },
+            _ => self.clone(),
+        })
     }
 
     fn negate(&self) -> Self {

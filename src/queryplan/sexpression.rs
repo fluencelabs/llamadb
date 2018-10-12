@@ -1,6 +1,7 @@
 use databaseinfo::{DatabaseInfo, TableInfo};
 
 use std::fmt;
+use std::fmt::Display;
 
 #[derive(Clone)]
 pub struct IfChain<'a, DB: DatabaseInfo>
@@ -101,13 +102,8 @@ where
                 source_id,
                 ref yield_fn,
             } => {
-                try!(writeln!(
-                    f,
-                    "(scan `{}` :source-id {}",
-                    table.get_name(),
-                    source_id
-                ));
-                try!(yield_fn.format(f, indent + 1));
+                writeln!(f, "(scan `{}` :source-id {}", table.get_name(), source_id)?;
+                yield_fn.format(f, indent + 1)?;
                 write!(f, ")")
             },
             &SExpression::LeftJoin {
@@ -117,17 +113,17 @@ where
                 ref yield_out_fn,
                 ref right_rows_if_none,
             } => {
-                try!(writeln!(f, "(left-join :source-id {}", source_id));
-                try!(yield_in_fn.format(f, indent + 1));
-                try!(writeln!(f, ""));
-                try!(predicate.format(f, indent + 1));
-                try!(writeln!(f, ""));
-                try!(yield_out_fn.format(f, indent + 1));
-                try!(writeln!(f, ""));
+                writeln!(f, "(left-join :source-id {}", source_id)?;
+                yield_in_fn.format(f, indent + 1)?;
+                writeln!(f, "")?;
+                predicate.format(f, indent + 1)?;
+                writeln!(f, "")?;
+                yield_out_fn.format(f, indent + 1)?;
+                writeln!(f, "")?;
                 write_indent!(indent + 1);
-                try!(write!(f, "(right-rows-if-none "));
+                write!(f, "(right-rows-if-none ")?;
                 for value in right_rows_if_none {
-                    try!(write!(f, "{} ", value));
+                    write!(f, "{} ", value)?;
                 }
                 write!(f, "))")
             },
@@ -136,10 +132,10 @@ where
                 ref yield_in_fn,
                 ref yield_out_fn,
             } => {
-                try!(writeln!(f, "(map :source-id {}", source_id));
-                try!(yield_in_fn.format(f, indent + 1));
-                try!(writeln!(f, ""));
-                try!(yield_out_fn.format(f, indent + 1));
+                writeln!(f, "(map :source-id {}", source_id)?;
+                yield_in_fn.format(f, indent + 1)?;
+                writeln!(f, "")?;
+                yield_out_fn.format(f, indent + 1)?;
                 write!(f, ")")
             },
             &SExpression::TempGroupBy {
@@ -148,24 +144,24 @@ where
                 ref group_by_values,
                 ref yield_out_fn,
             } => {
-                try!(writeln!(f, "(temp-group-by :source-id {}", source_id));
-                try!(yield_in_fn.format(f, indent + 1));
-                try!(writeln!(f, ""));
+                writeln!(f, "(temp-group-by :source-id {}", source_id)?;
+                yield_in_fn.format(f, indent + 1)?;
+                writeln!(f, "")?;
                 write_indent!(indent + 1);
-                try!(write!(f, "(group-by-values"));
+                write!(f, "(group-by-values")?;
                 for group_by_value in group_by_values {
-                    try!(writeln!(f, ""));
-                    try!(group_by_value.format(f, indent + 2));
+                    writeln!(f, "")?;
+                    group_by_value.format(f, indent + 2)?;
                 }
-                try!(writeln!(f, ")"));
-                try!(yield_out_fn.format(f, indent + 1));
+                writeln!(f, ")")?;
+                yield_out_fn.format(f, indent + 1)?;
                 write!(f, ")")
             },
             &SExpression::Yield { ref fields } => {
-                try!(write!(f, "(yield"));
+                write!(f, "(yield")?;
                 for field in fields {
-                    try!(writeln!(f, ""));
-                    try!(field.format(f, indent + 1));
+                    writeln!(f, "")?;
+                    field.format(f, indent + 1)?;
                 }
                 write!(f, ")")
             },
@@ -181,16 +177,16 @@ where
                 ref chains,
                 ref else_,
             } => {
-                try!(write!(f, "(if "));
+                write!(f, "(if ")?;
                 for chain in chains {
-                    try!(writeln!(f, ""));
-                    try!(chain.predicate.format(f, indent + 1));
-                    try!(writeln!(f, ""));
-                    try!(chain.yield_fn.format(f, indent + 1));
+                    writeln!(f, "")?;
+                    chain.predicate.format(f, indent + 1)?;
+                    writeln!(f, "")?;
+                    chain.yield_fn.format(f, indent + 1)?;
                 }
                 if let Some(e) = else_.as_ref() {
-                    try!(writeln!(f, ""));
-                    try!(e.format(f, indent + 1));
+                    writeln!(f, "")?;
+                    e.format(f, indent + 1)?;
                 }
                 write!(f, ")")
             },
@@ -199,15 +195,15 @@ where
                 ref lhs,
                 ref rhs,
             } => {
-                try!(writeln!(f, "({} ", op.sigil()));
-                try!(lhs.format(f, indent + 1));
-                try!(writeln!(f, ""));
-                try!(rhs.format(f, indent + 1));
+                writeln!(f, "({} ", op.sigil())?;
+                lhs.format(f, indent + 1)?;
+                writeln!(f, "")?;
+                rhs.format(f, indent + 1)?;
                 write!(f, ")")
             },
             &SExpression::UnaryOp { ref op, ref expr } => {
-                try!(writeln!(f, "({} ", op.name()));
-                try!(expr.format(f, indent + 1));
+                writeln!(f, "({} ", op.name())?;
+                expr.format(f, indent + 1)?;
                 write!(f, ")")
             },
             &SExpression::AggregateOp {
@@ -215,8 +211,8 @@ where
                 source_id,
                 ref value,
             } => {
-                try!(writeln!(f, "({} :source-id {} ", op.name(), source_id));
-                try!(value.format(f, indent + 1));
+                writeln!(f, "({} :source-id {} ", op.name(), source_id)?;
+                value.format(f, indent + 1)?;
                 write!(f, ")")
             },
             &SExpression::CountAll { source_id } => {
@@ -267,6 +263,12 @@ impl BinaryOp {
             &BitOr => "|",
             &Concatenate => "concat",
         }
+    }
+}
+
+impl Display for BinaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "Binary operation {}", self.sigil())
     }
 }
 
