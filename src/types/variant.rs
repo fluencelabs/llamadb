@@ -302,7 +302,7 @@ impl ColumnValueOps for Variant {
             (Variant::SignedInteger(integer), DbType::Integer { signed: false, .. }) => {
                 Ok(Variant::UnsignedInteger(*integer as u64))
             },
-            (v, t) => Err(format!("{:?} cannot be cast to {:?}", v, t)),
+            (v, t) => Err(format!("'{:?}' cannot be cast to {:?}", v, t)),
         }
     }
 
