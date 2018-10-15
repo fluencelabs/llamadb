@@ -17,14 +17,14 @@ use types::{DbType, Variant};
 mod table;
 use self::table::Table;
 use queryplan::QueryPlanCompileError;
+use sqlsyntax;
+use sqlsyntax::ast::TableOrSubquery;
+use sqlsyntax::ParseError;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Display;
 use std::option::Option::None;
 use tempdb::table::Column;
-use sqlsyntax::ast::TableOrSubquery;
-use sqlsyntax;
-use sqlsyntax::ParseError;
 use tempdb::table::UpdateError;
 
 pub struct TempDb {
@@ -81,7 +81,6 @@ impl From<UpdateError> for ExecuteError {
         }
     }
 }
-
 
 impl Display for ExecuteError {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
@@ -404,15 +403,15 @@ impl TempDb {
 
         match stmt.from {
             ast::From::Cross(vec) => {
-
                 match vec.as_slice() {
-                    [ TableOrSubquery::Table { table, .. } ] => {
+                    [TableOrSubquery::Table { table, .. }] => {
                         let table = self.get_table_mut(&table.table_name)?;
 
                         match stmt.where_expr {
                             None => {
                                 // the same as Truncate, remove all rows from table
-                                table.truncate()
+                                table
+                                    .truncate()
                                     .map_err(ExecuteError::from)
                                     .map(ExecuteStatementResponse::Deleted)
                             },
@@ -422,17 +421,15 @@ impl TempDb {
                             },
                         }
                     },
-                    _ => {
-                        Err(ExecuteError::new("One table allowed in DELETE statement; Sub queries isn't supported."))
-                    },
+                    _ => Err(ExecuteError::new(
+                        "One table allowed in DELETE statement; Sub queries isn't supported.",
+                    )),
                 }
-
             },
-            ast::From::Join { .. } => {
-                Err(ExecuteError::new("JOIN is not supported into DELETE statement"))
-            },
+            ast::From::Join { .. } => Err(ExecuteError::new(
+                "JOIN is not supported into DELETE statement",
+            )),
         }
-
     }
 
     fn explain(&self, stmt: ast::ExplainStatement) -> ExecuteStatementResult {
@@ -508,26 +505,41 @@ fn variant_to_data(
 
 #[cfg(test)]
 mod test {
-    use tempdb::TempDb;
+    use tempdb::ExecuteError;
     use tempdb::ExecuteStatementResponse;
     use tempdb::ExecuteStatementResult;
-    use tempdb::ExecuteError;
+    use tempdb::TempDb;
     use types::Variant;
 
     fn create_table<'a>(db: &'a mut TempDb, t_name: &str) -> ExecuteStatementResult<'a> {
-        db.do_query(&format!("create table {}(id int, name varchar(128), age int);", t_name))
+        db.do_query(&format!(
+            "create table {}(id int, name varchar(128), age int);",
+            t_name
+        ))
     }
 
     fn fill_table<'a>(db: &'a mut TempDb, t_name: &str) -> ExecuteStatementResult<'a> {
-        db.do_query(&format!("insert into {} values(1, 'Isaac Asimov', 50);", t_name))?;
-        db.do_query(&format!("insert into {} values(1, 'Stanisław Lem', 40)", t_name))?;
-        db.do_query(&format!("insert into {} values(1, 'Liu Cixin', 30)", t_name))
+        db.do_query(&format!(
+            "insert into {} values(1, 'Isaac Asimov', 50);",
+            t_name
+        ))?;
+        db.do_query(&format!(
+            "insert into {} values(1, 'Stanisław Lem', 40)",
+            t_name
+        ))?;
+        db.do_query(&format!(
+            "insert into {} values(1, 'Liu Cixin', 30)",
+            t_name
+        ))
     }
 
     fn row_in_table(db: &mut TempDb, t_name: &str) -> Result<usize, ExecuteError> {
         let res = db.do_query(&format!("select count(*) from {};", t_name))?;
         let result = match res {
-            ExecuteStatementResponse::Select { column_names: _, rows } => {
+            ExecuteStatementResponse::Select {
+                column_names: _,
+                rows,
+            } => {
                 let rows = rows.collect::<Vec<Box<[Variant]>>>();
                 if rows.len() == 0 {
                     Ok(0)
@@ -535,14 +547,13 @@ mod test {
                     let first_row = rows.get(0).unwrap();
                     let first_rec = &first_row[0];
                     let result = match first_rec {
-                        Variant::UnsignedInteger(int) => { *int as usize },
-                        _ => panic!("Can't get count(*)")
+                        Variant::UnsignedInteger(int) => *int as usize,
+                        _ => panic!("Can't get count(*)"),
                     };
                     Ok(result)
                 }
-            }
-            _ => Err(ExecuteError::new("Can't get count(*)"))
-
+            },
+            _ => Err(ExecuteError::new("Can't get count(*)")),
         };
         result
     }
@@ -556,10 +567,8 @@ mod test {
         assert_eq!(row_in_table(db, "Users").unwrap(), 3);
 
         match db.do_query("delete from Users;").unwrap() {
-            ExecuteStatementResponse::Deleted(number_of_rows) => {
-              assert_eq!(number_of_rows, 3)
-            },
-            _ => panic!("Expected Deleted result")
+            ExecuteStatementResponse::Deleted(number_of_rows) => assert_eq!(number_of_rows, 3),
+            _ => panic!("Expected Deleted result"),
         };
 
         assert_eq!(row_in_table(db, "Users").unwrap(), 0);
@@ -567,24 +576,20 @@ mod test {
         assert_eq!(row_in_table(db, "Users").unwrap(), 3);
 
         match db.do_query("delete * from Users;").unwrap() {
-            ExecuteStatementResponse::Deleted(number_of_rows) => {
-                assert_eq!(number_of_rows, 3)
-            },
-            _ => panic!("Expected Deleted result")
+            ExecuteStatementResponse::Deleted(number_of_rows) => assert_eq!(number_of_rows, 3),
+            _ => panic!("Expected Deleted result"),
         };
 
         assert_eq!(row_in_table(db, "Users").unwrap(), 0);
         fill_table(db, "Users").unwrap();
         assert_eq!(row_in_table(db, "Users").unwrap(), 3);
-//        match db.do_query("delete from Users where age = 40;").unwrap() {
-//            ExecuteStatementResponse::Deleted(number_of_rows) => {
-//                assert_eq!(number_of_rows, 2)
-//            },
-//            ast =>
-//                panic!("Expected Deleted result")
-//        };
-//        assert_eq!(row_in_table(db, "Users").unwrap(), 1);
-
-
+        //        match db.do_query("delete from Users where age = 40;").unwrap() {
+        //            ExecuteStatementResponse::Deleted(number_of_rows) => {
+        //                assert_eq!(number_of_rows, 2)
+        //            },
+        //            ast =>
+        //                panic!("Expected Deleted result")
+        //        };
+        //        assert_eq!(row_in_table(db, "Users").unwrap(), 1);
     }
 }
