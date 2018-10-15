@@ -20,6 +20,7 @@ use queryplan::QueryPlanCompileError;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Display;
+use std::option::Option::None;
 use tempdb::table::Column;
 
 pub struct TempDb {
@@ -33,6 +34,7 @@ pub enum ExecuteStatementResponse<'a> {
         column_names: Box<[String]>,
         rows: Box<Iterator<Item = Box<[Variant]>> + 'a>,
     },
+    Deleted(usize),
     Explain(String),
 }
 
@@ -180,6 +182,7 @@ impl TempDb {
             },
             ast::Statement::Insert(insert_stmt) => self.insert_into(insert_stmt),
             ast::Statement::Select(select_stmt) => self.select(select_stmt),
+            ast::Statement::Delete(delete_stmt) => self.delete(delete_stmt),
             ast::Statement::Explain(explain_stmt) => self.explain(explain_stmt),
         }
     }
@@ -192,7 +195,7 @@ impl TempDb {
         }
 
         let table_name = Identifier::new(&stmt.table.table_name)
-            .ok_or(ExecuteError::new("Table name is required."))?;
+            .ok_or(ExecuteError::new("Invalid table name."))?;
 
         let columns = stmt
             .columns
@@ -260,7 +263,8 @@ impl TempDb {
                 Some(v) => v
                     .into_iter()
                     .map(|column_name| {
-                        let ident = Identifier::new(&column_name).unwrap();
+                        let ident = Identifier::new(&column_name)
+                            .ok_or(ExecuteError::new("Invalid column name."))?;
                         match table.find_column_by_name(&ident) {
                             Some(column) => Ok(column.get_offset()),
                             None => Err(ExecuteError::from_string(format!(
@@ -366,6 +370,11 @@ impl TempDb {
             column_names: column_names.into_boxed_slice(),
             rows: Box::new(rows.into_iter()),
         })
+    }
+
+    fn delete(&mut self, stmt: ast::DeleteStatement) -> ExecuteStatementResult {
+        trace!("deleting rows: {:?}", stmt);
+        unimplemented!()
     }
 
     fn explain(&self, stmt: ast::ExplainStatement) -> ExecuteStatementResult {

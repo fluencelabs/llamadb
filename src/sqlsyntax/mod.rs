@@ -77,6 +77,7 @@ mod test {
     use sqlsyntax::ast::CreateTableColumnConstraintType::PrimaryKey;
     use sqlsyntax::ast::CreateTableColumnConstraintType::Unique;
     use sqlsyntax::ast::CreateTableStatement;
+    use sqlsyntax::ast::DeleteStatement;
     use sqlsyntax::ast::ExplainStatement::Select;
     use sqlsyntax::ast::Expression::BinaryOp;
     use sqlsyntax::ast::Expression::FunctionCall;
@@ -493,6 +494,67 @@ mod test {
     }
 
     #[test]
+    fn delete_parsing_test() {
+        match parse("DELETE * FROM users;").unwrap() {
+            Statement::Delete(DeleteStatement { from, where_expr }) => {
+                assert_eq!(
+                    from,
+                    Cross(vec![TableOrSubquery::Table {
+                        table: Table {
+                            database_name: None,
+                            table_name: "users".to_string()
+                        },
+                        alias: None
+                    }])
+                );
+                assert_eq!(where_expr, None);
+            },
+            st => panic!("Expected delete statement but actually={:?}", st),
+        }
+
+        match parse("DELETE FROM users;").unwrap() {
+            Statement::Delete(DeleteStatement { from, where_expr }) => {
+                assert_eq!(
+                    from,
+                    Cross(vec![TableOrSubquery::Table {
+                        table: Table {
+                            database_name: None,
+                            table_name: "users".to_string()
+                        },
+                        alias: None
+                    }])
+                );
+                assert_eq!(where_expr, None);
+            },
+            st => panic!("Expected delete statement but actually={:?}", st),
+        }
+
+        match parse("DELETE FROM users where name = 'Alex'").unwrap() {
+            Statement::Delete(DeleteStatement { from, where_expr }) => {
+                assert_eq!(
+                    from,
+                    Cross(vec![TableOrSubquery::Table {
+                        table: Table {
+                            database_name: None,
+                            table_name: "users".to_string()
+                        },
+                        alias: None
+                    }])
+                );
+                assert_eq!(
+                    where_expr,
+                    Some(BinaryOp {
+                        lhs: Box::new(Ident("name".to_string())),
+                        rhs: Box::new(StringLiteral("Alex".to_string())),
+                        op: Equal
+                    })
+                );
+            },
+            st => panic!("Expected delete statement but actually={:?}", st),
+        }
+    }
+
+    #[test]
     fn parsing_errors_test() {
         match parse("") {
             Err(err) => assert_eq!(
@@ -517,6 +579,10 @@ mod test {
                 err,
                 ParseError::new("Expected * or expression for SELECT column; got Select")
             ),
+            st => panic!("Expected error but actually={:?}", st),
+        }
+        match parse("DELETE name FROM users;") {
+            Err(err) => assert_eq!(err, ParseError::new("Expected FROM; got Ident(\"name\")")),
             st => panic!("Expected error but actually={:?}", st),
         }
     }

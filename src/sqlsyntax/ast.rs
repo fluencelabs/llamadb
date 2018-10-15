@@ -176,6 +176,12 @@ pub enum CreateStatement {
 }
 
 #[derive(Debug)]
+pub struct DeleteStatement {
+    pub from: From,
+    pub where_expr: Option<Expression>,
+}
+
+#[derive(Debug)]
 pub enum ExplainStatement {
     Select(SelectStatement),
 }
@@ -185,5 +191,6 @@ pub enum Statement {
     Select(SelectStatement),
     Insert(InsertStatement),
     Create(CreateStatement),
+    Delete(DeleteStatement),
     Explain(ExplainStatement),
 }
