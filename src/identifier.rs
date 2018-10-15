@@ -22,7 +22,7 @@ use std::ops::Deref;
 /// lower-case representation. This process is known as normalization.
 #[derive(PartialEq, Eq, Clone)]
 pub struct Identifier {
-    value: String,
+    pub value: String,
 }
 
 impl Identifier {

@@ -137,6 +137,14 @@ impl Table {
         Ok(())
     }
 
+    /// Deletes the data inside a table, but not the table itself. Returns number
+    /// of deleted rows.
+    pub fn truncate(&mut self) -> Result<usize, UpdateError> {
+        let len = self.rowid_index.len();
+        self.rowid_index.clear();
+        Ok(len)
+    }
+
     pub fn get_columns(&self) -> &Vec<Column> {
         &self.columns
     }
