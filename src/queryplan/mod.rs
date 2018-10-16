@@ -12,6 +12,7 @@ mod source;
 pub use self::execute::*;
 pub use self::sexpression::*;
 use self::source::*;
+use sqlsyntax::ast::SelectColumn;
 
 pub enum QueryPlanCompileError {
     TableDoesNotExist(Identifier),
@@ -104,12 +105,49 @@ where
         plan
     }
 
-    // todo finish
+    /// Compiles specified [DeleteStatement] and returns for it a [QueryPlan].
     pub fn compile_delete(
-        _db: &'a DB,
-        _stmt: &ast::DeleteStatement,
+        db: &'a DB,
+        stmt: ast::DeleteStatement,
     ) -> Result<QueryPlan<'a, DB>, QueryPlanCompileError> {
-        unimplemented!()
+        let scope = SourceScope::new(None, Vec::new(), Vec::new());
+
+        let mut source_id_to_query_id = HashMap::new();
+        let mut query_to_aggregated_source_id = HashMap::new();
+        let mut next_source_id = 0;
+        let mut next_query_id = 1;
+
+        let mut groups_info = GroupsInfo::new();
+
+        let plan = {
+            let mut compiler = QueryCompiler {
+                query_id: 0,
+                db,
+                source_id_to_query_id: &mut source_id_to_query_id,
+                query_to_aggregated_source_id: &mut query_to_aggregated_source_id,
+                next_source_id: &mut next_source_id,
+                next_query_id: &mut next_query_id,
+            };
+
+            let (new_scope, from_where) =
+                compiler.from_where(stmt.from, stmt.where_expr, &scope, &mut groups_info)?;
+
+            let (out_column_names, select_exprs) =
+                compiler.select(vec![SelectColumn::AllColumns], &new_scope, &mut groups_info)?;
+
+            let expr = from_where.evaluate(SExpression::Yield {
+                fields: select_exprs,
+            });
+
+            Ok(QueryPlan {
+                expr,
+                out_column_names,
+            })
+        };
+
+        debug!("source id to query id; {:?}", source_id_to_query_id);
+
+        plan
     }
 }
 
