@@ -24,6 +24,7 @@ use std::error::Error;
 use std::fmt;
 use std::fmt::Display;
 use std::option::Option::None;
+use std::option::Option::Some;
 use tempdb::table::Column;
 use tempdb::table::UpdateError;
 
@@ -113,14 +114,14 @@ impl<'a> Group for ScanGroup<'a> {
     }
 
     fn count(&self) -> u64 {
-        self.table.rowid_index.len() as u64
+        self.table.rows_set.len() as u64
     }
 
     fn iter<'b>(&'b self) -> Box<Iterator<Item = Cow<'b, [Variant]>> + 'b> {
         let table = self.table;
         let columns: &'b [self::table::Column] = &table.columns;
 
-        Box::new(table.rowid_index.iter().map(move |key_v| {
+        Box::new(table.rows_set.iter().map(move |key_v| {
             use byteutils;
 
             let raw_key: &[u8] = &key_v;
@@ -262,7 +263,7 @@ impl TempDb {
             name: table_name,
             columns,
             next_rowid: 1,
-            rowid_index: BTreeSet::new(),
+            rows_set: BTreeSet::new(),
         })?;
 
         Ok(ExecuteStatementResponse::Created)
@@ -405,10 +406,10 @@ impl TempDb {
             ast::From::Cross(vec) => {
                 match vec.as_slice() {
                     [TableOrSubquery::Table { table, .. }] => {
-                        let table = self.get_table_mut(&table.table_name)?;
-
                         match stmt.where_expr {
                             None => {
+                                let table = self.get_table_mut(&table.table_name)?;
+
                                 // the same as Truncate, remove all rows from table
                                 table
                                     .truncate()
@@ -437,8 +438,7 @@ impl TempDb {
 
         match stmt {
             ast::ExplainStatement::Select(select) => {
-                let plan =
-                    QueryPlan::compile_select(self, select).map_err(|e| ExecuteError::from(e))?;
+                let plan = QueryPlan::compile_select(self, select).map_err(ExecuteError::from)?;
 
                 Ok(ExecuteStatementResponse::Explain(plan.to_string()))
             },
@@ -524,11 +524,11 @@ mod test {
             t_name
         ))?;
         db.do_query(&format!(
-            "insert into {} values(1, 'Stanisław Lem', 40)",
+            "insert into {} values(2, 'Stanislaw Lem', 40)",
             t_name
         ))?;
         db.do_query(&format!(
-            "insert into {} values(1, 'Liu Cixin', 30)",
+            "insert into {} values(3, 'Liu Cixin', 30)",
             t_name
         ))
     }
@@ -583,12 +583,9 @@ mod test {
         assert_eq!(row_in_table(db, "Users").unwrap(), 0);
         fill_table(db, "Users").unwrap();
         assert_eq!(row_in_table(db, "Users").unwrap(), 3);
-        //        match db.do_query("delete from Users where age = 40;").unwrap() {
-        //            ExecuteStatementResponse::Deleted(number_of_rows) => {
-        //                assert_eq!(number_of_rows, 2)
-        //            },
-        //            ast =>
-        //                panic!("Expected Deleted result")
+        //        match db.do_query("delete from Users where id = 2;").unwrap() {
+        //            ExecuteStatementResponse::Deleted(number_of_rows) => assert_eq!(number_of_rows, 2),
+        //            ast => panic!("Expected Deleted result"),
         //        };
         //        assert_eq!(row_in_table(db, "Users").unwrap(), 1);
     }

@@ -1,3 +1,5 @@
+//! Contains traits for getting some information about Database, Table and Column.
+
 use columnvalueops::ColumnValueOps;
 use identifier::Identifier;
 use std::cmp::Eq;
@@ -13,6 +15,7 @@ pub trait DatabaseInfo {
     fn find_table_by_name(&self, name: &Identifier) -> Option<&Self::Table>;
 }
 
+/// A read-only interface to information about a table.
 pub trait TableInfo {
     type Column: ColumnInfo;
 
@@ -30,6 +33,7 @@ pub trait TableInfo {
     }
 }
 
+/// A read-only interface to information about a column.
 pub trait ColumnInfo {
     fn get_offset(&self) -> u32;
     fn get_name(&self) -> &Identifier;

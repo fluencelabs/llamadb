@@ -23,6 +23,7 @@ struct Source<'a, ColumnValue: Sized + 'static> {
 }
 
 impl<'a, ColumnValue: Sized> Source<'a, ColumnValue> {
+    /// Finds row by specified 'source_id'
     fn find_row_from_source_id(&self, source_id: u32) -> Option<&[ColumnValue]> {
         if self.source_id == source_id {
             match &self.source_type {
@@ -36,6 +37,7 @@ impl<'a, ColumnValue: Sized> Source<'a, ColumnValue> {
         }
     }
 
+    /// Finds group by specified 'source_id'
     fn find_group_from_source_id(
         &self,
         source_id: u32,

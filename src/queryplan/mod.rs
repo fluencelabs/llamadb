@@ -123,7 +123,7 @@ where
 
     let mut compiler = QueryCompiler {
         query_id: 0,
-        db: db,
+        db,
         source_id_to_query_id: &mut source_id_to_query_id,
         query_to_aggregated_source_id: &mut query_to_aggregated_source_id,
         next_source_id: &mut next_source_id,
@@ -763,17 +763,18 @@ where
             ast::Expression::Ident(s) => {
                 let column_identifier = new_identifier(&s)?;
 
-                let (source_id, column_offset) = match scope.get_column_offset(&column_identifier) {
-                    GetColumnOffsetResult::One(v) => v,
-                    GetColumnOffsetResult::None => {
-                        return Err(QueryPlanCompileError::ColumnDoesNotExist(column_identifier))
-                    },
-                    GetColumnOffsetResult::Ambiguous(..) => {
-                        return Err(QueryPlanCompileError::AmbiguousColumnName(
-                            column_identifier,
-                        ))
-                    },
-                };
+                let SourceIdAndOffset(source_id, column_offset) =
+                    match scope.get_column_offset(&column_identifier) {
+                        GetColumnOffsetResult::One(v) => v,
+                        GetColumnOffsetResult::None => {
+                            return Err(QueryPlanCompileError::ColumnDoesNotExist(column_identifier))
+                        },
+                        GetColumnOffsetResult::Ambiguous(..) => {
+                            return Err(QueryPlanCompileError::AmbiguousColumnName(
+                                column_identifier,
+                            ))
+                        },
+                    };
 
                 groups_info.add_query_id(self.get_query_id_from_source_id(source_id));
 
@@ -786,7 +787,7 @@ where
                 let table_identifier = new_identifier(&s1)?;
                 let column_identifier = new_identifier(&s2)?;
 
-                let (source_id, column_offset) =
+                let SourceIdAndOffset(source_id, column_offset) =
                     match scope.get_table_column_offset(&table_identifier, &column_identifier) {
                         GetColumnOffsetResult::One(v) => v,
                         GetColumnOffsetResult::None => {
@@ -870,7 +871,7 @@ where
 
                             let mut g = GroupsInfo::new();
 
-                            let value = try!(self.ast_expression_to_sexpression(arg, scope, &mut g));
+                            let value = self.ast_expression_to_sexpression(arg, scope, &mut g)?;
 
                             if let Some(aggregated_query) = g.innermost_nonaggregated_query {
                                 if aggregated_query <= self.query_id {
