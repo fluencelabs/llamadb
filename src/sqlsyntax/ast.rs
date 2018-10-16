@@ -1,9 +1,9 @@
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum UnaryOp {
     Negate,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum BinaryOp {
     Equal,
     NotEqual,
@@ -22,7 +22,7 @@ pub enum BinaryOp {
     Concatenate,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
     Ident(String),
     IdentMember(String, String),
@@ -51,13 +51,13 @@ pub enum Expression {
     Subquery(Box<SelectStatement>),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Table {
     pub database_name: Option<String>,
     pub table_name: String,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TableOrSubquery {
     Subquery {
         subquery: Box<SelectStatement>,
@@ -69,7 +69,7 @@ pub enum TableOrSubquery {
     },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum SelectColumn {
     AllColumns,
     Expr {
@@ -78,7 +78,7 @@ pub enum SelectColumn {
     },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct SelectStatement {
     pub result_columns: Vec<SelectColumn>,
     pub from: From,
@@ -88,7 +88,7 @@ pub struct SelectStatement {
     pub order_by: Vec<OrderingTerm>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum From {
     Cross(Vec<TableOrSubquery>),
     Join {
@@ -97,26 +97,26 @@ pub enum From {
     },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum JoinOperator {
     Left,
     Inner,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Join {
     pub operator: JoinOperator,
     pub table: TableOrSubquery,
     pub on: Expression,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Order {
     Ascending,
     Descending,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct OrderingTerm {
     pub expr: Expression,
     pub order: Order,
@@ -175,7 +175,7 @@ pub enum CreateStatement {
     Table(CreateTableStatement),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DeleteStatement {
     pub from: From,
     pub where_expr: Option<Expression>,
