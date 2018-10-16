@@ -103,6 +103,14 @@ where
 
         plan
     }
+
+    // todo finish
+    pub fn compile_delete(
+        _db: &'a DB,
+        _stmt: &ast::DeleteStatement,
+    ) -> Result<QueryPlan<'a, DB>, QueryPlanCompileError> {
+        unimplemented!()
+    }
 }
 
 pub fn compile_ast_expression<'a, DB: DatabaseInfo>(

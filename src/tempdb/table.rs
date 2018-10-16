@@ -172,6 +172,12 @@ impl Table {
         Ok(())
     }
 
+    /// Deletes one specified row inside a table. Returns 'true' if specified row
+    /// was deleted 'false' otherwise.
+    pub fn delete_row(&mut self, row: &[u8]) -> Result<bool, UpdateError> {
+        Ok(self.rows_set.remove(row))
+    }
+
     /// Deletes the data inside a table, but not the table itself. Returns number
     /// of deleted rows.
     pub fn truncate(&mut self) -> Result<usize, UpdateError> {

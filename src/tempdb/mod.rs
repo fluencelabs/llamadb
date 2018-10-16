@@ -376,7 +376,7 @@ impl TempDb {
     }
 
     fn select(&self, stmt: ast::SelectStatement) -> ExecuteStatementResult {
-        let plan = QueryPlan::compile_select(self, stmt).map_err(|e| ExecuteError::from(e))?;
+        let plan = QueryPlan::compile_select(self, stmt).map_err(ExecuteError::from)?;
         debug!("{}", plan);
 
         let mut rows = Vec::new();
@@ -402,7 +402,7 @@ impl TempDb {
     fn delete(&mut self, stmt: ast::DeleteStatement) -> ExecuteStatementResult {
         trace!("deleting rows: {:?}", stmt);
 
-        match stmt.from {
+        match &stmt.from {
             ast::From::Cross(vec) => {
                 match vec.as_slice() {
                     [TableOrSubquery::Table { table, .. }] => {
@@ -417,8 +417,46 @@ impl TempDb {
                                     .map(ExecuteStatementResponse::Deleted)
                             },
                             Some(_) => {
-                                // use 'where' to find rows and remove each of them
-                                unimplemented!("delete with condition is not implemented yet.")
+                                let mut selected_rows = Vec::<Vec<u8>>::new();
+
+                                {
+                                    let plan = QueryPlan::compile_delete(self, &stmt)
+                                        .map_err(ExecuteError::from)?;
+                                    debug!("{}", plan);
+
+                                    let execute = ExecuteQueryPlan::new(self);
+                                    execute.execute_query_plan(
+                                        &plan.expr,
+                                        &mut |row: &[Variant]| {
+                                            selected_rows = row
+                                                .iter()
+                                                .map(|record| {
+                                                    let mut buf = Vec::new();
+                                                    let db_type = record.get_dbtype();
+
+                                                    variant_to_data(
+                                                        record.clone(),
+                                                        db_type,
+                                                        false,
+                                                        &mut buf,
+                                                    )?;
+                                                    Ok(buf)
+                                                }).collect::<Result<Vec<Vec<u8>>, ExecuteError>>()?;
+
+                                            Ok(())
+                                        },
+                                    )?;
+                                }
+
+                                // do delete
+
+                                let mut table = self.get_table_mut(&table.table_name)?;
+                                let row_deleted = selected_rows.len();
+                                for row in selected_rows {
+                                    table.delete_row(row.as_slice())?;
+                                }
+
+                                Ok(ExecuteStatementResponse::Deleted(row_deleted))
                             },
                         }
                     },
