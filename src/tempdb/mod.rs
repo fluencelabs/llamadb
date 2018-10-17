@@ -357,8 +357,7 @@ impl TempDb {
                                         let sexpr = queryplan::compile_ast_expression(self, expr)
                                             .map_err(|e| ExecuteError::from(e))?;
 
-                                        let value =
-                                            execute.execute_expression(&sexpr, &mut |_| Ok(()))?;
+                                        let value = execute.execute_expression(&sexpr)?;
 
                                         let is_null =
                                             variant_to_data(value, dbtype, nullable, &mut buf)?;
