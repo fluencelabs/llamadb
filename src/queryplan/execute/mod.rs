@@ -13,6 +13,7 @@ use tempdb::ExecuteError;
 
 enum SourceType<'a, ColumnValue: Sized + 'static> {
     Row(&'a [ColumnValue]),
+    RawRow(&'a [ColumnValue], &'a Vec<u8>),
     Group(&'a Group<ColumnValue = ColumnValue>),
 }
 
@@ -27,7 +28,7 @@ impl<'a, ColumnValue: Sized> Source<'a, ColumnValue> {
     fn find_row_from_source_id(&self, source_id: u32) -> Option<&[ColumnValue]> {
         if self.source_id == source_id {
             match &self.source_type {
-                &SourceType::Row(row) => Some(row),
+                &SourceType::Row(row) | &SourceType::RawRow(row, _) => Some(row),
                 _ => None,
             }
         } else if let Some(parent) = self.parent {
@@ -80,15 +81,17 @@ where
         expr: &SExpression<'a, Storage::Info>,
         result_cb: &'c mut FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue])
             -> Result<(), ExecuteError>,
+        raw_row_walker: &'c mut FnMut(Vec<u8>) -> Result<(), ExecuteError>,
     ) -> Result<(), ExecuteError> {
-        self.execute(expr, result_cb, None)
+        self.execute(expr, result_cb, None, raw_row_walker)
     }
 
     pub fn execute_expression(
         &self,
         expr: &SExpression<'a, Storage::Info>,
+        raw_row_walker: &'a mut FnMut(Vec<u8>) -> Result<(), ExecuteError>,
     ) -> Result<<Storage::Info as DatabaseInfo>::ColumnValue, ExecuteError> {
-        self.resolve_value(expr, None)
+        self.resolve_value(expr, None, raw_row_walker)
     }
 
     fn execute<'b, 'c>(
@@ -97,6 +100,7 @@ where
         result_cb: &'c mut FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue])
             -> Result<(), ExecuteError>,
         source: Option<&Source<'b, <Storage::Info as DatabaseInfo>::ColumnValue>>,
+        raw_row_walker: &'c mut FnMut(Vec<u8>) -> Result<(), ExecuteError>,
     ) -> Result<(), ExecuteError> {
         match expr {
             &SExpression::Scan {
@@ -105,14 +109,14 @@ where
                 ref yield_fn,
             } => {
                 let group = self.storage.scan_table(table);
-                for row in group.iter() {
+                for row in group.iter_raw() {
                     let new_source = Source {
                         parent: source,
                         source_id,
-                        source_type: SourceType::Row(&row),
+                        source_type: SourceType::RawRow(row.row.as_ref(), row.raw_row),
                     };
 
-                    self.execute(yield_fn, result_cb, Some(&new_source))?;
+                    self.execute(yield_fn, result_cb, Some(&new_source), raw_row_walker)?;
                 }
 
                 Ok(())
@@ -135,16 +139,23 @@ where
                             source_type: SourceType::Row(row),
                         };
 
-                        let pred_result = self.resolve_value(predicate, Some(&new_source))?;
+                        let pred_result =
+                            self.resolve_value(predicate, Some(&new_source), &mut |_| Ok(()))?;
 
                         if pred_result.tests_true() {
                             one_or_more_rows = true;
-                            self.execute(yield_out_fn, result_cb, Some(&new_source))
+                            self.execute(
+                                yield_out_fn,
+                                result_cb,
+                                Some(&new_source),
+                                &mut |_| Ok(()),
+                            )
                         } else {
                             Ok(())
                         }
                     },
                     source,
+                    raw_row_walker,
                 )?;
 
                 if !one_or_more_rows {
@@ -155,7 +166,7 @@ where
                         source_type: SourceType::Row(right_rows_if_none),
                     };
 
-                    self.execute(yield_out_fn, result_cb, Some(&new_source))
+                    self.execute(yield_out_fn, result_cb, Some(&new_source), raw_row_walker)
                 } else {
                     Ok(())
                 }
@@ -173,9 +184,10 @@ where
                         source_type: SourceType::Row(row),
                     };
 
-                    self.execute(yield_out_fn, result_cb, Some(&new_source))
+                    self.execute(yield_out_fn, result_cb, Some(&new_source), &mut |_| Ok(()))
                 },
                 source,
+                raw_row_walker,
             ),
             &SExpression::TempGroupBy {
                 source_id,
@@ -196,8 +208,9 @@ where
 
                         let result: Result<Vec<_>, _> = group_by_values
                             .iter()
-                            .map(|value| self.resolve_value(value, Some(&new_source)))
-                            .collect();
+                            .map(|value| {
+                                self.resolve_value(value, Some(&new_source), &mut |_| Ok(()))
+                            }).collect();
 
                         let key = result?;
 
@@ -209,6 +222,7 @@ where
                         Ok(())
                     },
                     source,
+                    raw_row_walker,
                 )?;
 
                 // the group buckets have been filled.
@@ -221,7 +235,7 @@ where
                         source_type: SourceType::Group(&group),
                     };
 
-                    self.execute(yield_out_fn, result_cb, Some(&new_source))?;
+                    self.execute(yield_out_fn, result_cb, Some(&new_source), raw_row_walker)?;
                 }
 
                 Ok(())
@@ -229,8 +243,16 @@ where
             &SExpression::Yield { ref fields } => {
                 let columns: Result<Vec<_>, _> = fields
                     .iter()
-                    .map(|e| self.resolve_value(e, source))
+                    .map(|e| self.resolve_value(e, source, raw_row_walker))
                     .collect();
+
+                let src: &Source<_> = source.unwrap();
+                match src.source_type {
+                    SourceType::RawRow(_, raw_row) => {
+                        raw_row_walker(raw_row.clone())?;
+                    },
+                    _ => {}, // do nothing
+                }
 
                 columns.map(|columns| result_cb(&columns))?
             },
@@ -239,15 +261,16 @@ where
                 ref else_,
             } => {
                 for chain in chains {
-                    let pred_result = self.resolve_value(&chain.predicate, source)?;
+                    let pred_result =
+                        self.resolve_value(&chain.predicate, source, raw_row_walker)?;
 
                     if pred_result.tests_true() {
-                        return self.execute(&chain.yield_fn, result_cb, source);
+                        return self.execute(&chain.yield_fn, result_cb, source, raw_row_walker);
                     }
                 }
 
                 if let Some(e) = else_.as_ref() {
-                    self.execute(e, result_cb, source)
+                    self.execute(e, result_cb, source, raw_row_walker)
                 } else {
                     Ok(())
                 }
@@ -267,6 +290,7 @@ where
         &self,
         expr: &SExpression<'a, Storage::Info>,
         source: Option<&Source<'b, <Storage::Info as DatabaseInfo>::ColumnValue>>,
+        raw_row_walker: &'b mut FnMut(Vec<u8>) -> Result<(), ExecuteError>,
     ) -> Result<<Storage::Info as DatabaseInfo>::ColumnValue, ExecuteError> {
         match expr {
             &SExpression::Value(ref v) => Ok(v.clone()),
@@ -298,8 +322,8 @@ where
                 ref lhs,
                 ref rhs,
             } => {
-                let l = self.resolve_value(lhs, source)?;
-                let r = self.resolve_value(rhs, source)?;
+                let l = self.resolve_value(lhs, source, raw_row_walker)?;
+                let r = self.resolve_value(rhs, source, raw_row_walker)?;
 
                 match op {
                     BinaryOp::Equal => Ok(l.equals(&r).map_err(ExecuteError::from_string)?),
@@ -327,7 +351,7 @@ where
                 }
             },
             &SExpression::UnaryOp { op, ref expr } => {
-                let e = self.resolve_value(expr, source)?;
+                let e = self.resolve_value(expr, source, raw_row_walker)?;
 
                 Ok(match op {
                     UnaryOp::Negate => e.negate(),
@@ -350,7 +374,7 @@ where
                                 source_type: SourceType::Row(&row),
                             };
 
-                            let v = self.resolve_value(value, Some(&new_source))?;
+                            let v = self.resolve_value(value, Some(&new_source), raw_row_walker)?;
                             op_functor.feed(v).map_err(ExecuteError::from_string)?;
                         }
 
@@ -396,6 +420,7 @@ where
                         Ok(())
                     },
                     source,
+                    raw_row_walker,
                 )?;
 
                 if row_count == 1 {
@@ -408,7 +433,7 @@ where
                         source_type: SourceType::Row(&row),
                     };
 
-                    self.resolve_value(yield_out_fn, Some(&new_source))
+                    self.resolve_value(yield_out_fn, Some(&new_source), raw_row_walker)
                 } else {
                     Err(ExecuteError::new("subquery must yield exactly one row"))
                 }

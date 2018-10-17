@@ -16,10 +16,12 @@ use types::{DbType, Variant};
 
 mod table;
 use self::table::Table;
+use databasestorage::RawRow;
 use queryplan::QueryPlanCompileError;
 use sqlsyntax;
 use sqlsyntax::ast::TableOrSubquery;
 use sqlsyntax::ParseError;
+use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Display;
@@ -113,6 +115,10 @@ impl<'a> Group for ScanGroup<'a> {
         self.iter().nth(0)
     }
 
+    fn get_any_raw_row(&self) -> Option<RawRow<<Self as Group>::ColumnValue>> {
+        self.iter_raw().nth(0)
+    }
+
     fn count(&self) -> u64 {
         self.table.rows_set.len() as u64
     }
@@ -180,6 +186,15 @@ impl<'a> Group for ScanGroup<'a> {
 
             v.into()
         }))
+    }
+
+    fn iter_raw<'b>(&'b self) -> Box<Iterator<Item = RawRow<Self::ColumnValue>> + 'b> {
+        let row_iter = self.iter();
+        Box::new(
+            row_iter
+                .zip(self.table.rows_set.iter())
+                .map(|(row, raw_row)| RawRow { row, raw_row }),
+        )
     }
 }
 
@@ -342,7 +357,8 @@ impl TempDb {
                                         let sexpr = queryplan::compile_ast_expression(self, expr)
                                             .map_err(|e| ExecuteError::from(e))?;
 
-                                        let value = execute.execute_expression(&sexpr)?;
+                                        let value =
+                                            execute.execute_expression(&sexpr, &mut |_| Ok(()))?;
 
                                         let is_null =
                                             variant_to_data(value, dbtype, nullable, &mut buf)?;
@@ -382,10 +398,14 @@ impl TempDb {
         let mut rows = Vec::new();
 
         let execute = ExecuteQueryPlan::new(self);
-        execute.execute_query_plan(&plan.expr, &mut |r| {
-            rows.push(r.to_vec().into_boxed_slice());
-            Ok(())
-        })?;
+        execute.execute_query_plan(
+            &plan.expr,
+            &mut |r| {
+                rows.push(r.to_vec().into_boxed_slice());
+                Ok(())
+            },
+            &mut |_| Ok(()),
+        )?;
 
         let column_names: Vec<String> = plan
             .out_column_names
@@ -402,6 +422,8 @@ impl TempDb {
     fn delete(&mut self, stmt: ast::DeleteStatement) -> ExecuteStatementResult {
         trace!("deleting rows: {:?}", stmt);
 
+        let stmt_clone = stmt.clone();
+
         match &stmt.from {
             ast::From::Cross(vec) => {
                 match vec.as_slice() {
@@ -417,32 +439,19 @@ impl TempDb {
                                     .map(ExecuteStatementResponse::Deleted)
                             },
                             Some(_) => {
-                                let mut selected_rows = Vec::<Vec<u8>>::new();
+                                let mut selected_rows = HashSet::<Vec<u8>>::new();
 
                                 {
-                                    let plan = QueryPlan::compile_delete(self, &stmt)
+                                    let plan = QueryPlan::compile_delete(self, stmt_clone)
                                         .map_err(ExecuteError::from)?;
                                     debug!("{}", plan);
 
                                     let execute = ExecuteQueryPlan::new(self);
                                     execute.execute_query_plan(
                                         &plan.expr,
-                                        &mut |row: &[Variant]| {
-                                            selected_rows = row
-                                                .iter()
-                                                .map(|record| {
-                                                    let mut buf = Vec::new();
-                                                    let db_type = record.get_dbtype();
-
-                                                    variant_to_data(
-                                                        record.clone(),
-                                                        db_type,
-                                                        false,
-                                                        &mut buf,
-                                                    )?;
-                                                    Ok(buf)
-                                                }).collect::<Result<Vec<Vec<u8>>, ExecuteError>>()?;
-
+                                        &mut |_| Ok(()),
+                                        &mut |row_as_bytes| {
+                                            selected_rows.insert(row_as_bytes);
                                             Ok(())
                                         },
                                     )?;
@@ -519,6 +528,7 @@ impl TempDb {
     }
 }
 
+/// Converts current Variant to bytes.
 fn variant_to_data(
     value: Variant,
     column_type: DbType,
@@ -610,6 +620,7 @@ mod test {
         };
 
         assert_eq!(row_in_table(db, "Users").unwrap(), 0);
+
         fill_table(db, "Users").unwrap();
         assert_eq!(row_in_table(db, "Users").unwrap(), 3);
 
@@ -619,12 +630,32 @@ mod test {
         };
 
         assert_eq!(row_in_table(db, "Users").unwrap(), 0);
+
         fill_table(db, "Users").unwrap();
         assert_eq!(row_in_table(db, "Users").unwrap(), 3);
-        //        match db.do_query("delete from Users where id = 2;").unwrap() {
-        //            ExecuteStatementResponse::Deleted(number_of_rows) => assert_eq!(number_of_rows, 2),
-        //            ast => panic!("Expected Deleted result"),
-        //        };
-        //        assert_eq!(row_in_table(db, "Users").unwrap(), 1);
+
+        match db.do_query("delete from Users where id > 1;").unwrap() {
+            ExecuteStatementResponse::Deleted(number_of_rows) => assert_eq!(number_of_rows, 2),
+            _ => panic!("Expected Deleted result"),
+        };
+
+        println!("row in table {:?}", row_in_table(db, "Users").unwrap());
+        assert_eq!(row_in_table(db, "Users").unwrap(), 1);
+
+        fill_table(db, "Users").unwrap();
+        assert_eq!(row_in_table(db, "Users").unwrap(), 4);
+
+        match db
+            .do_query(
+                "delete from Users as u1 where u1.id = 1 or u1.age = \
+                 (select u2.age from Users as u2 where u2.id = 2);",
+            ).unwrap()
+        {
+            ExecuteStatementResponse::Deleted(number_of_rows) => assert_eq!(number_of_rows, 3),
+            _ => panic!("Expected Deleted result"),
+        };
+
+        println!("row in table {:?}", row_in_table(db, "Users").unwrap());
+        assert_eq!(row_in_table(db, "Users").unwrap(), 1);
     }
 }
