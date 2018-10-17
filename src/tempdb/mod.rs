@@ -667,7 +667,7 @@ mod test {
 
         assert_eq!(row_in_table(db, "Users").unwrap(), 3);
 
-        match db.do_query("truncate Users;").unwrap() {
+        match db.do_query("truncate table Users;").unwrap() {
             ExecuteStatementResponse::Deleted(number_of_rows) => assert_eq!(number_of_rows, 3),
             _ => panic!("Expected Deleted result"),
         };

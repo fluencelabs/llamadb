@@ -572,7 +572,7 @@ mod test {
 
     #[test]
     fn truncate_parsing_test() {
-        match parse("TRUNCATE users;").unwrap() {
+        match parse("TRUNCATE TABLE users;").unwrap() {
             Statement::Truncate(TruncateStatement { table }) => {
                 assert_eq!(
                     table,

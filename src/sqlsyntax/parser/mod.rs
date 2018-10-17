@@ -404,6 +404,7 @@ impl Rule for TruncateStatement {
     type Output = TruncateStatement;
     fn parse(tokens: &mut Tokens) -> RuleResult<TruncateStatement> {
         tokens.pop_token_expecting(&Token::Truncate, "TRUNCATE")?;
+        tokens.pop_token_expecting(&Token::Table, "TABLE")?;
         let table = try_notfirst!(Table::parse(tokens));
         Ok(TruncateStatement { table })
     }
