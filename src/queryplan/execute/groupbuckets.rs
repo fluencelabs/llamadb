@@ -1,4 +1,5 @@
 use databasestorage::Group;
+use databasestorage::RawRow;
 use std;
 use std::borrow::Cow;
 use std::cmp::Eq;
@@ -59,8 +60,12 @@ pub struct GroupBucket<ColumnValue: Clone + Eq + Hash + 'static> {
 impl<ColumnValue: Clone + Eq + Hash + 'static> Group for GroupBucket<ColumnValue> {
     type ColumnValue = ColumnValue;
 
-    fn get_any_row<'b>(&'b self) -> Option<Cow<'b, [ColumnValue]>> {
+    fn get_any_row(&self) -> Option<Cow<[ColumnValue]>> {
         self.rows.iter().nth(0).map(|r| Cow::from(r.as_ref()))
+    }
+
+    fn get_any_raw_row(&self) -> Option<RawRow<<Self as Group>::ColumnValue>> {
+        panic!("GroupBucket can't get row as raw bytes!")
     }
 
     fn count(&self) -> u64 {
@@ -72,5 +77,9 @@ impl<ColumnValue: Clone + Eq + Hash + 'static> Group for GroupBucket<ColumnValue
             let row_ref: &[ColumnValue] = &row;
             row_ref.into()
         }))
+    }
+
+    fn iter_raw<'a>(&'a self) -> Box<Iterator<Item = RawRow<<Self as Group>::ColumnValue>> + 'a> {
+        panic!("GroupBucket can't get iterator of raw bytes!")
     }
 }

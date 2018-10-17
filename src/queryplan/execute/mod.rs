@@ -13,6 +13,7 @@ use tempdb::ExecuteError;
 
 enum SourceType<'a, ColumnValue: Sized + 'static> {
     Row(&'a [ColumnValue]),
+    RawRow(&'a [ColumnValue], &'a Vec<u8>),
     Group(&'a Group<ColumnValue = ColumnValue>),
 }
 
@@ -23,10 +24,11 @@ struct Source<'a, ColumnValue: Sized + 'static> {
 }
 
 impl<'a, ColumnValue: Sized> Source<'a, ColumnValue> {
+    /// Finds row by specified 'source_id'
     fn find_row_from_source_id(&self, source_id: u32) -> Option<&[ColumnValue]> {
         if self.source_id == source_id {
             match &self.source_type {
-                &SourceType::Row(row) => Some(row),
+                &SourceType::Row(row) | &SourceType::RawRow(row, _) => Some(row),
                 _ => None,
             }
         } else if let Some(parent) = self.parent {
@@ -36,6 +38,7 @@ impl<'a, ColumnValue: Sized> Source<'a, ColumnValue> {
         }
     }
 
+    /// Finds group by specified 'source_id'
     fn find_group_from_source_id(
         &self,
         source_id: u32,
@@ -72,14 +75,24 @@ where
         ExecuteQueryPlan { storage }
     }
 
-    // TODO: result_cb should yield a boxed array instead of a reference
+    /// Executes specified query plan. Call `row_cb` and `raw_row_cb` for each
+    /// row in result.
+    ///
+    /// * `expr` - query plan for execute
+    /// * `row_cb` - this callback will call for each row in the result of the
+    ///             query where row is array of columns
+    /// * `raw_row_cb` - this callback will call for each row in the result of
+    ///                 the query where row is raw byte array
+    ///
     pub fn execute_query_plan<'b, 'c>(
         &self,
         expr: &SExpression<'a, Storage::Info>,
-        result_cb: &'c mut FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue])
+        row_cb: &'c mut FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue])
             -> Result<(), ExecuteError>,
+        raw_row_cb: &'c mut FnMut(Vec<u8>) -> Result<(), ExecuteError>,
     ) -> Result<(), ExecuteError> {
-        self.execute(expr, result_cb, None)
+        self.execute(expr, row_cb, None, raw_row_cb)
+        // TODO: row_cb should yield a boxed array instead of a reference
     }
 
     pub fn execute_expression(
@@ -92,9 +105,10 @@ where
     fn execute<'b, 'c>(
         &self,
         expr: &SExpression<'a, Storage::Info>,
-        result_cb: &'c mut FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue])
+        row_cb: &'c mut FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue])
             -> Result<(), ExecuteError>,
         source: Option<&Source<'b, <Storage::Info as DatabaseInfo>::ColumnValue>>,
+        raw_row_cb: &'c mut FnMut(Vec<u8>) -> Result<(), ExecuteError>,
     ) -> Result<(), ExecuteError> {
         match expr {
             &SExpression::Scan {
@@ -103,14 +117,14 @@ where
                 ref yield_fn,
             } => {
                 let group = self.storage.scan_table(table);
-                for row in group.iter() {
+                for row in group.iter_raw() {
                     let new_source = Source {
                         parent: source,
                         source_id,
-                        source_type: SourceType::Row(&row),
+                        source_type: SourceType::RawRow(row.row.as_ref(), row.raw_row),
                     };
 
-                    self.execute(yield_fn, result_cb, Some(&new_source))?;
+                    self.execute(yield_fn, row_cb, Some(&new_source), raw_row_cb)?;
                 }
 
                 Ok(())
@@ -137,12 +151,18 @@ where
 
                         if pred_result.tests_true() {
                             one_or_more_rows = true;
-                            self.execute(yield_out_fn, result_cb, Some(&new_source))
+                            self.execute(
+                                yield_out_fn,
+                                row_cb,
+                                Some(&new_source),
+                                &mut |_| Ok(()),
+                            )
                         } else {
                             Ok(())
                         }
                     },
                     source,
+                    raw_row_cb,
                 )?;
 
                 if !one_or_more_rows {
@@ -153,7 +173,7 @@ where
                         source_type: SourceType::Row(right_rows_if_none),
                     };
 
-                    self.execute(yield_out_fn, result_cb, Some(&new_source))
+                    self.execute(yield_out_fn, row_cb, Some(&new_source), raw_row_cb)
                 } else {
                     Ok(())
                 }
@@ -171,9 +191,10 @@ where
                         source_type: SourceType::Row(row),
                     };
 
-                    self.execute(yield_out_fn, result_cb, Some(&new_source))
+                    self.execute(yield_out_fn, row_cb, Some(&new_source), &mut |_| Ok(()))
                 },
                 source,
+                raw_row_cb,
             ),
             &SExpression::TempGroupBy {
                 source_id,
@@ -207,6 +228,7 @@ where
                         Ok(())
                     },
                     source,
+                    raw_row_cb,
                 )?;
 
                 // the group buckets have been filled.
@@ -219,7 +241,7 @@ where
                         source_type: SourceType::Group(&group),
                     };
 
-                    self.execute(yield_out_fn, result_cb, Some(&new_source))?;
+                    self.execute(yield_out_fn, row_cb, Some(&new_source), raw_row_cb)?;
                 }
 
                 Ok(())
@@ -230,7 +252,15 @@ where
                     .map(|e| self.resolve_value(e, source))
                     .collect();
 
-                columns.map(|columns| result_cb(&columns))?
+                let src: &Source<_> = source.unwrap();
+                match src.source_type {
+                    SourceType::RawRow(_, raw_row) => {
+                        raw_row_cb(raw_row.clone())?;
+                    },
+                    _ => {}, // do nothing
+                }
+
+                columns.map(|columns| row_cb(&columns))?
             },
             &SExpression::If {
                 ref chains,
@@ -240,12 +270,12 @@ where
                     let pred_result = self.resolve_value(&chain.predicate, source)?;
 
                     if pred_result.tests_true() {
-                        return self.execute(&chain.yield_fn, result_cb, source);
+                        return self.execute(&chain.yield_fn, row_cb, source, raw_row_cb);
                     }
                 }
 
                 if let Some(e) = else_.as_ref() {
-                    self.execute(e, result_cb, source)
+                    self.execute(e, row_cb, source, raw_row_cb)
                 } else {
                     Ok(())
                 }
@@ -394,6 +424,7 @@ where
                         Ok(())
                     },
                     source,
+                    &mut |_| Ok(()),
                 )?;
 
                 if row_count == 1 {

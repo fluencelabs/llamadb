@@ -16,11 +16,19 @@ use types::{DbType, Variant};
 
 mod table;
 use self::table::Table;
+use databasestorage::RawRow;
 use queryplan::QueryPlanCompileError;
+use sqlsyntax;
+use sqlsyntax::ast::TableOrSubquery;
+use sqlsyntax::ParseError;
+use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Display;
+use std::option::Option::None;
+use std::option::Option::Some;
 use tempdb::table::Column;
+use tempdb::table::UpdateError;
 
 pub struct TempDb {
     tables: Vec<Table>,
@@ -33,6 +41,7 @@ pub enum ExecuteStatementResponse<'a> {
         column_names: Box<[String]>,
         rows: Box<Iterator<Item = Box<[Variant]>> + 'a>,
     },
+    Deleted(usize),
     Explain(String),
 }
 
@@ -54,6 +63,22 @@ impl ExecuteError {
 
 impl From<QueryPlanCompileError> for ExecuteError {
     fn from(err: QueryPlanCompileError) -> Self {
+        ExecuteError {
+            message: err.to_string(),
+        }
+    }
+}
+
+impl From<ParseError> for ExecuteError {
+    fn from(err: ParseError) -> Self {
+        ExecuteError {
+            message: err.to_string(),
+        }
+    }
+}
+
+impl From<UpdateError> for ExecuteError {
+    fn from(err: UpdateError) -> Self {
         ExecuteError {
             message: err.to_string(),
         }
@@ -90,15 +115,19 @@ impl<'a> Group for ScanGroup<'a> {
         self.iter().nth(0)
     }
 
+    fn get_any_raw_row(&self) -> Option<RawRow<<Self as Group>::ColumnValue>> {
+        self.iter_raw().nth(0)
+    }
+
     fn count(&self) -> u64 {
-        self.table.rowid_index.len() as u64
+        self.table.rows_set.len() as u64
     }
 
     fn iter<'b>(&'b self) -> Box<Iterator<Item = Cow<'b, [Variant]>> + 'b> {
         let table = self.table;
         let columns: &'b [self::table::Column] = &table.columns;
 
-        Box::new(table.rowid_index.iter().map(move |key_v| {
+        Box::new(table.rows_set.iter().map(move |key_v| {
             use byteutils;
 
             let raw_key: &[u8] = &key_v;
@@ -158,6 +187,15 @@ impl<'a> Group for ScanGroup<'a> {
             v.into()
         }))
     }
+
+    fn iter_raw<'b>(&'b self) -> Box<Iterator<Item = RawRow<Self::ColumnValue>> + 'b> {
+        let row_iter = self.iter();
+        Box::new(
+            row_iter
+                .zip(self.table.rows_set.iter())
+                .map(|(row, raw_row)| RawRow { row, raw_row }),
+        )
+    }
 }
 
 impl DatabaseStorage for TempDb {
@@ -173,6 +211,12 @@ impl TempDb {
         TempDb { tables: Vec::new() }
     }
 
+    /// Entry point for this database, executes specified sql and returns result.
+    pub fn do_query(&mut self, sql: &str) -> ExecuteStatementResult {
+        let statement = sqlsyntax::parse_statement(sql).map_err(ExecuteError::from)?;
+        self.execute_statement(statement)
+    }
+
     pub fn execute_statement(&mut self, stmt: ast::Statement) -> ExecuteStatementResult {
         match stmt {
             ast::Statement::Create(create_stmt) => match create_stmt {
@@ -180,6 +224,7 @@ impl TempDb {
             },
             ast::Statement::Insert(insert_stmt) => self.insert_into(insert_stmt),
             ast::Statement::Select(select_stmt) => self.select(select_stmt),
+            ast::Statement::Delete(delete_stmt) => self.delete(delete_stmt),
             ast::Statement::Explain(explain_stmt) => self.explain(explain_stmt),
         }
     }
@@ -192,7 +237,7 @@ impl TempDb {
         }
 
         let table_name = Identifier::new(&stmt.table.table_name)
-            .ok_or(ExecuteError::new("Table name is required."))?;
+            .ok_or(ExecuteError::new("Invalid table name."))?;
 
         let columns = stmt
             .columns
@@ -233,7 +278,7 @@ impl TempDb {
             name: table_name,
             columns,
             next_rowid: 1,
-            rowid_index: BTreeSet::new(),
+            rows_set: BTreeSet::new(),
         })?;
 
         Ok(ExecuteStatementResponse::Created)
@@ -260,7 +305,8 @@ impl TempDb {
                 Some(v) => v
                     .into_iter()
                     .map(|column_name| {
-                        let ident = Identifier::new(&column_name).unwrap();
+                        let ident = Identifier::new(&column_name)
+                            .ok_or(ExecuteError::new("Invalid column name."))?;
                         match table.find_column_by_name(&ident) {
                             Some(column) => Ok(column.get_offset()),
                             None => Err(ExecuteError::from_string(format!(
@@ -345,16 +391,20 @@ impl TempDb {
     }
 
     fn select(&self, stmt: ast::SelectStatement) -> ExecuteStatementResult {
-        let plan = QueryPlan::compile_select(self, stmt).map_err(|e| ExecuteError::from(e))?;
+        let plan = QueryPlan::compile_select(self, stmt).map_err(ExecuteError::from)?;
         debug!("{}", plan);
 
         let mut rows = Vec::new();
 
         let execute = ExecuteQueryPlan::new(self);
-        execute.execute_query_plan(&plan.expr, &mut |r| {
-            rows.push(r.to_vec().into_boxed_slice());
-            Ok(())
-        })?;
+        execute.execute_query_plan(
+            &plan.expr,
+            &mut |r| {
+                rows.push(r.to_vec().into_boxed_slice());
+                Ok(())
+            },
+            &mut |_| Ok(()),
+        )?;
 
         let column_names: Vec<String> = plan
             .out_column_names
@@ -368,13 +418,73 @@ impl TempDb {
         })
     }
 
+    fn delete(&mut self, stmt: ast::DeleteStatement) -> ExecuteStatementResult {
+        trace!("deleting rows: {:?}", stmt);
+
+        let stmt_clone = stmt.clone();
+
+        match &stmt.from {
+            ast::From::Cross(vec) => {
+                match vec.as_slice() {
+                    [TableOrSubquery::Table { table, .. }] => {
+                        match stmt.where_expr {
+                            None => {
+                                let table = self.get_table_mut(&table.table_name)?;
+
+                                // the same as Truncate, remove all rows from table
+                                table
+                                    .truncate()
+                                    .map_err(ExecuteError::from)
+                                    .map(ExecuteStatementResponse::Deleted)
+                            },
+                            Some(_) => {
+                                let mut selected_rows = HashSet::<Vec<u8>>::new();
+
+                                {
+                                    let plan = QueryPlan::compile_delete(self, stmt_clone)
+                                        .map_err(ExecuteError::from)?;
+                                    debug!("{}", plan);
+
+                                    let execute = ExecuteQueryPlan::new(self);
+                                    execute.execute_query_plan(
+                                        &plan.expr,
+                                        &mut |_| Ok(()),
+                                        &mut |row_as_bytes| {
+                                            selected_rows.insert(row_as_bytes);
+                                            Ok(())
+                                        },
+                                    )?;
+                                }
+
+                                // do delete
+
+                                let mut table = self.get_table_mut(&table.table_name)?;
+                                let row_deleted = selected_rows.len();
+                                for row in selected_rows {
+                                    table.delete_row(row.as_slice())?;
+                                }
+
+                                Ok(ExecuteStatementResponse::Deleted(row_deleted))
+                            },
+                        }
+                    },
+                    _ => Err(ExecuteError::new(
+                        "One table allowed in DELETE statement; Sub queries isn't supported.",
+                    )),
+                }
+            },
+            ast::From::Join { .. } => Err(ExecuteError::new(
+                "JOIN is not supported into DELETE statement",
+            )),
+        }
+    }
+
     fn explain(&self, stmt: ast::ExplainStatement) -> ExecuteStatementResult {
         use queryplan::QueryPlan;
 
         match stmt {
             ast::ExplainStatement::Select(select) => {
-                let plan =
-                    QueryPlan::compile_select(self, select).map_err(|e| ExecuteError::from(e))?;
+                let plan = QueryPlan::compile_select(self, select).map_err(ExecuteError::from)?;
 
                 Ok(ExecuteStatementResponse::Explain(plan.to_string()))
             },
@@ -417,6 +527,7 @@ impl TempDb {
     }
 }
 
+/// Converts current Variant to bytes.
 fn variant_to_data(
     value: Variant,
     column_type: DbType,
@@ -436,5 +547,114 @@ fn variant_to_data(
 
             Ok(if nullable { Some(false) } else { None })
         },
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tempdb::ExecuteError;
+    use tempdb::ExecuteStatementResponse;
+    use tempdb::ExecuteStatementResult;
+    use tempdb::TempDb;
+    use types::Variant;
+
+    fn create_table<'a>(db: &'a mut TempDb, t_name: &str) -> ExecuteStatementResult<'a> {
+        db.do_query(&format!(
+            "create table {}(id int, name varchar(128), age int);",
+            t_name
+        ))
+    }
+
+    fn fill_table<'a>(db: &'a mut TempDb, t_name: &str) -> ExecuteStatementResult<'a> {
+        db.do_query(&format!(
+            "insert into {} values(1, 'Isaac Asimov', 50);",
+            t_name
+        ))?;
+        db.do_query(&format!(
+            "insert into {} values(2, 'Stanislaw Lem', 40)",
+            t_name
+        ))?;
+        db.do_query(&format!(
+            "insert into {} values(3, 'Liu Cixin', 30)",
+            t_name
+        ))
+    }
+
+    fn row_in_table(db: &mut TempDb, t_name: &str) -> Result<usize, ExecuteError> {
+        let res = db.do_query(&format!("select count(*) from {};", t_name))?;
+        let result = match res {
+            ExecuteStatementResponse::Select {
+                column_names: _,
+                rows,
+            } => {
+                let rows = rows.collect::<Vec<Box<[Variant]>>>();
+                if rows.len() == 0 {
+                    Ok(0)
+                } else {
+                    let first_row = rows.get(0).unwrap();
+                    let first_rec = &first_row[0];
+                    let result = match first_rec {
+                        Variant::UnsignedInteger(int) => *int as usize,
+                        _ => panic!("Can't get count(*)"),
+                    };
+                    Ok(result)
+                }
+            },
+            _ => Err(ExecuteError::new("Can't get count(*)")),
+        };
+        result
+    }
+
+    #[test]
+    fn delete_test() {
+        let db = &mut TempDb::new();
+        create_table(db, "Users").unwrap();
+        fill_table(db, "Users").unwrap();
+
+        assert_eq!(row_in_table(db, "Users").unwrap(), 3);
+
+        match db.do_query("delete from Users;").unwrap() {
+            ExecuteStatementResponse::Deleted(number_of_rows) => assert_eq!(number_of_rows, 3),
+            _ => panic!("Expected Deleted result"),
+        };
+
+        assert_eq!(row_in_table(db, "Users").unwrap(), 0);
+
+        fill_table(db, "Users").unwrap();
+        assert_eq!(row_in_table(db, "Users").unwrap(), 3);
+
+        match db.do_query("delete * from Users;").unwrap() {
+            ExecuteStatementResponse::Deleted(number_of_rows) => assert_eq!(number_of_rows, 3),
+            _ => panic!("Expected Deleted result"),
+        };
+
+        assert_eq!(row_in_table(db, "Users").unwrap(), 0);
+
+        fill_table(db, "Users").unwrap();
+        assert_eq!(row_in_table(db, "Users").unwrap(), 3);
+
+        match db.do_query("delete from Users where id > 1;").unwrap() {
+            ExecuteStatementResponse::Deleted(number_of_rows) => assert_eq!(number_of_rows, 2),
+            _ => panic!("Expected Deleted result"),
+        };
+
+        println!("row in table {:?}", row_in_table(db, "Users").unwrap());
+        assert_eq!(row_in_table(db, "Users").unwrap(), 1);
+
+        fill_table(db, "Users").unwrap();
+        assert_eq!(row_in_table(db, "Users").unwrap(), 4);
+
+        match db
+            .do_query(
+                "delete from Users as u1 where u1.id = 1 or u1.age = \
+                 (select u2.age from Users as u2 where u2.id = 2);",
+            ).unwrap()
+        {
+            ExecuteStatementResponse::Deleted(number_of_rows) => assert_eq!(number_of_rows, 3),
+            _ => panic!("Expected Deleted result"),
+        };
+
+        println!("row in table {:?}", row_in_table(db, "Users").unwrap());
+        assert_eq!(row_in_table(db, "Users").unwrap(), 1);
     }
 }

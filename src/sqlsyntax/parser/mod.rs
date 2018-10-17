@@ -43,7 +43,7 @@ fn rule_result_not_first<T>(rule_result: RuleResult<T>) -> RuleResult<T> {
 
 macro_rules! try_notfirst {
     ($r:expr) => {
-        try!(rule_result_not_first($r))
+        (rule_result_not_first($r))?
     };
 }
 
@@ -380,6 +380,26 @@ impl Rule for SelectColumn {
     }
 }
 
+impl Rule for DeleteStatement {
+    type Output = DeleteStatement;
+    fn parse(tokens: &mut Tokens) -> RuleResult<DeleteStatement> {
+        tokens.pop_token_expecting(&Token::Delete, "DELETE")?;
+
+        // it doesn't matter '*' is or isn't in delete statement
+        tokens.pop_if_token(&Token::Asterisk);
+
+        let from = try_notfirst!(From::parse(tokens));
+
+        let where_expr = if tokens.pop_if_token(&Token::Where) {
+            Some(try_notfirst!(Expression::parse(tokens)))
+        } else {
+            None
+        };
+
+        Ok(DeleteStatement { from, where_expr })
+    }
+}
+
 impl Rule for SelectStatement {
     type Output = SelectStatement;
     fn parse(tokens: &mut Tokens) -> RuleResult<SelectStatement> {
@@ -682,6 +702,8 @@ impl Rule for Statement {
             Ok(Statement::Insert(insert))
         } else if let Some(create) = CreateStatement::parse_lookahead(tokens)? {
             Ok(Statement::Create(create))
+        } else if let Some(delete) = DeleteStatement::parse_lookahead(tokens)? {
+            Ok(Statement::Delete(delete))
         } else if let Some(explain) = ExplainStatement::parse_lookahead(tokens)? {
             Ok(Statement::Explain(explain))
         } else {
