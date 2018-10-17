@@ -400,6 +400,15 @@ impl Rule for DeleteStatement {
     }
 }
 
+impl Rule for TruncateStatement {
+    type Output = TruncateStatement;
+    fn parse(tokens: &mut Tokens) -> RuleResult<TruncateStatement> {
+        tokens.pop_token_expecting(&Token::Truncate, "TRUNCATE")?;
+        let table = try_notfirst!(Table::parse(tokens));
+        Ok(TruncateStatement { table })
+    }
+}
+
 impl Rule for SelectStatement {
     type Output = SelectStatement;
     fn parse(tokens: &mut Tokens) -> RuleResult<SelectStatement> {
@@ -704,10 +713,12 @@ impl Rule for Statement {
             Ok(Statement::Create(create))
         } else if let Some(delete) = DeleteStatement::parse_lookahead(tokens)? {
             Ok(Statement::Delete(delete))
+        } else if let Some(truncate) = TruncateStatement::parse_lookahead(tokens)? {
+            Ok(Statement::Truncate(truncate))
         } else if let Some(explain) = ExplainStatement::parse_lookahead(tokens)? {
             Ok(Statement::Explain(explain))
         } else {
-            Err(tokens.expecting("SELECT, INSERT, CREATE, or EXPLAIN statement"))
+            Err(tokens.expecting("SELECT, INSERT, CREATE, DELETE, TRUNCATE or EXPLAIN statement"))
         }
     }
 }

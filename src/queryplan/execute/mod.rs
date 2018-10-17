@@ -151,12 +151,7 @@ where
 
                         if pred_result.tests_true() {
                             one_or_more_rows = true;
-                            self.execute(
-                                yield_out_fn,
-                                row_cb,
-                                Some(&new_source),
-                                &mut |_| Ok(()),
-                            )
+                            self.execute(yield_out_fn, row_cb, Some(&new_source), &mut |_| Ok(()))
                         } else {
                             Ok(())
                         }

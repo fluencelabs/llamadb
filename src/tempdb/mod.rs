@@ -225,6 +225,7 @@ impl TempDb {
             ast::Statement::Insert(insert_stmt) => self.insert_into(insert_stmt),
             ast::Statement::Select(select_stmt) => self.select(select_stmt),
             ast::Statement::Delete(delete_stmt) => self.delete(delete_stmt),
+            ast::Statement::Truncate(truncate_stmt) => self.delete(truncate_stmt.into()),
             ast::Statement::Explain(explain_stmt) => self.explain(explain_stmt),
         }
     }
@@ -656,5 +657,21 @@ mod test {
 
         println!("row in table {:?}", row_in_table(db, "Users").unwrap());
         assert_eq!(row_in_table(db, "Users").unwrap(), 1);
+    }
+
+    #[test]
+    fn truncate_test() {
+        let db = &mut TempDb::new();
+        create_table(db, "Users").unwrap();
+        fill_table(db, "Users").unwrap();
+
+        assert_eq!(row_in_table(db, "Users").unwrap(), 3);
+
+        match db.do_query("truncate Users;").unwrap() {
+            ExecuteStatementResponse::Deleted(number_of_rows) => assert_eq!(number_of_rows, 3),
+            _ => panic!("Expected Deleted result"),
+        };
+
+        assert_eq!(row_in_table(db, "Users").unwrap(), 0);
     }
 }
