@@ -451,7 +451,7 @@ impl TempDb {
                                         &plan.expr,
                                         &mut |_| Ok(()),
                                         &mut |row_as_bytes| {
-                                            selected_rows.insert(row_as_bytes);
+                                            selected_rows.insert(row_as_bytes.clone());
                                             Ok(())
                                         },
                                     )?;
