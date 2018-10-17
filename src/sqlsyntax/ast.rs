@@ -181,6 +181,11 @@ pub struct DeleteStatement {
     pub where_expr: Option<Expression>,
 }
 
+#[derive(Debug, Clone)]
+pub struct TruncateStatement {
+    pub table: Table,
+}
+
 #[derive(Debug)]
 pub enum ExplainStatement {
     Select(SelectStatement),
@@ -192,5 +197,6 @@ pub enum Statement {
     Insert(InsertStatement),
     Create(CreateStatement),
     Delete(DeleteStatement),
+    Truncate(TruncateStatement),
     Explain(ExplainStatement),
 }

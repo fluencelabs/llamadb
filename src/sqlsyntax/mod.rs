@@ -1,4 +1,7 @@
+use sqlsyntax::ast::DeleteStatement;
+use sqlsyntax::ast::From::Cross;
 use sqlsyntax::ast::Statement;
+use sqlsyntax::ast::TruncateStatement;
 use sqlsyntax::lexer::LexerError;
 use sqlsyntax::parser::RuleError;
 use std::error::Error;
@@ -61,6 +64,18 @@ pub fn parse_statements(query: &str) -> Result<Vec<ast::Statement>, ParseError> 
     parser::parse_statements(&tokens).map_err(Into::into)
 }
 
+impl From<TruncateStatement> for DeleteStatement {
+    fn from(truncate: TruncateStatement) -> Self {
+        DeleteStatement {
+            from: Cross(vec![ast::TableOrSubquery::Table {
+                table: truncate.table,
+                alias: None,
+            }]),
+            where_expr: None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::parse_statement as parse;
@@ -101,6 +116,7 @@ mod test {
     use sqlsyntax::ast::Table;
     use sqlsyntax::ast::TableOrSubquery;
     use sqlsyntax::ast::TableOrSubquery::Subquery;
+    use sqlsyntax::ast::TruncateStatement;
     use sqlsyntax::ParseError;
     use std::option::Option::Some;
 
@@ -555,12 +571,28 @@ mod test {
     }
 
     #[test]
+    fn truncate_parsing_test() {
+        match parse("TRUNCATE TABLE users;").unwrap() {
+            Statement::Truncate(TruncateStatement { table }) => {
+                assert_eq!(
+                    table,
+                    Table {
+                        database_name: None,
+                        table_name: "users".to_string()
+                    }
+                );
+            },
+            st => panic!("Expected truncate statement but actually={:?}", st),
+        }
+    }
+
+    #[test]
     fn parsing_errors_test() {
         match parse("") {
             Err(err) => assert_eq!(
                 err,
                 ParseError::new(
-                    "Expected SELECT, INSERT, CREATE, or EXPLAIN statement; got no more tokens"
+                    "Expected SELECT, INSERT, CREATE, DELETE, TRUNCATE or EXPLAIN statement; got no more tokens"
                 )
             ),
             st => panic!("Expected error but actually={:?}", st),
@@ -569,7 +601,7 @@ mod test {
             Err(err) => assert_eq!(
                 err,
                 ParseError::new(
-                    "Expected SELECT, INSERT, CREATE, or EXPLAIN statement; got Number(\"123\")"
+                    "Expected SELECT, INSERT, CREATE, DELETE, TRUNCATE or EXPLAIN statement; got Number(\"123\")"
                 )
             ),
             st => panic!("Expected error but actually={:?}", st),
