@@ -388,7 +388,14 @@ impl Rule for DeleteStatement {
         // it doesn't matter '*' is or isn't in delete statement
         tokens.pop_if_token(&Token::Asterisk);
 
-        let from = try_notfirst!(From::parse(tokens));
+        let from_token = tokens.pop_expecting("FROM")?;
+        if *from_token != Token::From {
+            return Err(RuleError::Expecting("FROM", Some(from_token.clone())));
+        } else {
+            tokens.expecting("FROM");
+        }
+
+        let table = try_notfirst!(TableOrSubquery::parse(tokens));
 
         let where_expr = if tokens.pop_if_token(&Token::Where) {
             Some(try_notfirst!(Expression::parse(tokens)))
@@ -396,7 +403,7 @@ impl Rule for DeleteStatement {
             None
         };
 
-        Ok(DeleteStatement { from, where_expr })
+        Ok(DeleteStatement { table, where_expr })
     }
 }
 

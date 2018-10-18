@@ -1,6 +1,6 @@
 use sqlsyntax::ast::DeleteStatement;
-use sqlsyntax::ast::From::Cross;
 use sqlsyntax::ast::Statement;
+use sqlsyntax::ast::TableOrSubquery;
 use sqlsyntax::ast::TruncateStatement;
 use sqlsyntax::lexer::LexerError;
 use sqlsyntax::parser::RuleError;
@@ -67,10 +67,10 @@ pub fn parse_statements(query: &str) -> Result<Vec<ast::Statement>, ParseError> 
 impl From<TruncateStatement> for DeleteStatement {
     fn from(truncate: TruncateStatement) -> Self {
         DeleteStatement {
-            from: Cross(vec![ast::TableOrSubquery::Table {
+            table: TableOrSubquery::Table {
                 table: truncate.table,
                 alias: None,
-            }]),
+            },
             where_expr: None,
         }
     }
@@ -512,16 +512,16 @@ mod test {
     #[test]
     fn delete_parsing_test() {
         match parse("DELETE * FROM users;").unwrap() {
-            Statement::Delete(DeleteStatement { from, where_expr }) => {
+            Statement::Delete(DeleteStatement { table, where_expr }) => {
                 assert_eq!(
-                    from,
-                    Cross(vec![TableOrSubquery::Table {
+                    table,
+                    TableOrSubquery::Table {
                         table: Table {
                             database_name: None,
                             table_name: "users".to_string()
                         },
                         alias: None
-                    }])
+                    }
                 );
                 assert_eq!(where_expr, None);
             },
@@ -529,16 +529,16 @@ mod test {
         }
 
         match parse("DELETE FROM users;").unwrap() {
-            Statement::Delete(DeleteStatement { from, where_expr }) => {
+            Statement::Delete(DeleteStatement { table, where_expr }) => {
                 assert_eq!(
-                    from,
-                    Cross(vec![TableOrSubquery::Table {
+                    table,
+                    TableOrSubquery::Table {
                         table: Table {
                             database_name: None,
                             table_name: "users".to_string()
                         },
                         alias: None
-                    }])
+                    }
                 );
                 assert_eq!(where_expr, None);
             },
@@ -546,16 +546,16 @@ mod test {
         }
 
         match parse("DELETE FROM users where name = 'Alex'").unwrap() {
-            Statement::Delete(DeleteStatement { from, where_expr }) => {
+            Statement::Delete(DeleteStatement { table, where_expr }) => {
                 assert_eq!(
-                    from,
-                    Cross(vec![TableOrSubquery::Table {
+                    table,
+                    TableOrSubquery::Table {
                         table: Table {
                             database_name: None,
                             table_name: "users".to_string()
                         },
                         alias: None
-                    }])
+                    }
                 );
                 assert_eq!(
                     where_expr,

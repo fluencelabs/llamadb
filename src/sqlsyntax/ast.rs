@@ -177,12 +177,15 @@ pub enum CreateStatement {
 
 #[derive(Debug, Clone)]
 pub struct DeleteStatement {
-    pub from: From,
+    /// Table for deleting row.
+    pub table: TableOrSubquery,
+    /// 'Where' condition
     pub where_expr: Option<Expression>,
 }
 
 #[derive(Debug, Clone)]
 pub struct TruncateStatement {
+    /// Table for clearing.
     pub table: Table,
 }
 

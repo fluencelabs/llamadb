@@ -424,58 +424,51 @@ impl TempDb {
 
         let stmt_clone = stmt.clone();
 
-        match &stmt.from {
-            ast::From::Cross(vec) => {
-                match vec.as_slice() {
-                    [TableOrSubquery::Table { table, .. }] => {
-                        match stmt.where_expr {
-                            None => {
-                                let table = self.get_table_mut(&table.table_name)?;
+        match &stmt.table {
+            TableOrSubquery::Table { table, .. } => {
+                match stmt.where_expr {
+                    None => {
+                        let table = self.get_table_mut(&table.table_name)?;
 
-                                // the same as Truncate, remove all rows from table
-                                table
-                                    .truncate()
-                                    .map_err(ExecuteError::from)
-                                    .map(ExecuteStatementResponse::Deleted)
-                            },
-                            Some(_) => {
-                                let mut selected_rows = HashSet::<Vec<u8>>::new();
-
-                                {
-                                    let plan = QueryPlan::compile_delete(self, stmt_clone)
-                                        .map_err(ExecuteError::from)?;
-                                    debug!("{}", plan);
-
-                                    let execute = ExecuteQueryPlan::new(self);
-                                    execute.execute_query_plan(
-                                        &plan.expr,
-                                        &mut |_| Ok(()),
-                                        &mut |row_as_bytes| {
-                                            selected_rows.insert(row_as_bytes.clone());
-                                            Ok(())
-                                        },
-                                    )?;
-                                }
-
-                                // do delete
-
-                                let mut table = self.get_table_mut(&table.table_name)?;
-                                let row_deleted = selected_rows.len();
-                                for row in selected_rows {
-                                    table.delete_row(row.as_slice())?;
-                                }
-
-                                Ok(ExecuteStatementResponse::Deleted(row_deleted))
-                            },
-                        }
+                        // the same as Truncate, remove all rows from table
+                        table
+                            .truncate()
+                            .map_err(ExecuteError::from)
+                            .map(ExecuteStatementResponse::Deleted)
                     },
-                    _ => Err(ExecuteError::new(
-                        "One table allowed in DELETE statement; Sub queries isn't supported.",
-                    )),
+                    Some(_) => {
+                        let mut selected_rows = HashSet::<Vec<u8>>::new();
+
+                        {
+                            let plan = QueryPlan::compile_delete(self, stmt_clone)
+                                .map_err(ExecuteError::from)?;
+                            debug!("{}", plan);
+
+                            let execute = ExecuteQueryPlan::new(self);
+                            execute.execute_query_plan(
+                                &plan.expr,
+                                &mut |_| Ok(()),
+                                &mut |row_as_bytes| {
+                                    selected_rows.insert(row_as_bytes.clone());
+                                    Ok(())
+                                },
+                            )?;
+                        }
+
+                        // do delete
+
+                        let mut table = self.get_table_mut(&table.table_name)?;
+                        let row_deleted = selected_rows.len();
+                        for row in selected_rows {
+                            table.delete_row(row.as_slice())?;
+                        }
+
+                        Ok(ExecuteStatementResponse::Deleted(row_deleted))
+                    },
                 }
             },
-            ast::From::Join { .. } => Err(ExecuteError::new(
-                "JOIN is not supported into DELETE statement",
+            _ => Err(ExecuteError::new(
+                "Subqueries instead of a Table name isn't allowed.",
             )),
         }
     }

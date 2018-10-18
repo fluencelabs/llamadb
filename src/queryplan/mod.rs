@@ -12,6 +12,8 @@ mod source;
 pub use self::execute::*;
 pub use self::sexpression::*;
 use self::source::*;
+use queryplan::source::TableOrSubquery;
+use sqlsyntax::ast::From::Cross;
 use sqlsyntax::ast::SelectColumn;
 
 pub enum QueryPlanCompileError {
@@ -129,8 +131,9 @@ where
                 next_query_id: &mut next_query_id,
             };
 
+            let from = Cross(vec![stmt.table]);
             let (new_scope, from_where) =
-                compiler.from_where(stmt.from, stmt.where_expr, &scope, &mut groups_info)?;
+                compiler.from_where(from, stmt.where_expr, &scope, &mut groups_info)?;
 
             let (out_column_names, select_exprs) =
                 compiler.select(vec![SelectColumn::AllColumns], &new_scope, &mut groups_info)?;
