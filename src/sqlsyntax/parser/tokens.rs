@@ -147,8 +147,4 @@ impl<'a> Tokens<'a> {
             Err(self.expecting(expecting_message))
         }
     }
-    //todo remove
-    pub fn skip(&mut self, number: usize) {
-        self.tokens = &self.tokens[number..];
-    }
 }

@@ -201,24 +201,24 @@ pub enum ExplainStatement {
 
 #[derive(Debug)]
 pub struct UpdateStatement {
-    /// Table for update
+    /// Table for update.
     pub table: TableOrSubquery,
 
-    /// Column names and value for updating
-    pub update: SetStatement,
+    /// Column names and value for updating.
+    /// Representation for `SET col1 = val1, col2 = val2, ...` in update statement.
+    pub update: Vec<UpdateField>, // tood change to Vec<UpdateField>
 
-    /// 'Where' conditions
+    /// 'Where' conditions.
     pub where_expr: Option<Expression>,
 }
 
-/// Representation for `SET col1 = val1, col2 = val2, ...` in update statement.
 #[derive(Debug, PartialEq)]
-pub struct SetStatement {
-    /// Column names for filling when update
-    pub update_column: Vec<String>,
+pub struct UpdateField {
+    /// Column name to assignment.
+    pub column_name: String,
 
-    /// New records for updating.
-    pub new_values: Vec<Expression>,
+    /// New record for updating.
+    pub new_values: Expression,
 }
 
 #[derive(Debug)]

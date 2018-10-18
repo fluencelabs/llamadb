@@ -333,24 +333,6 @@ impl Rule for AsAlias {
     }
 }
 
-impl Rule for SetStatement {
-    type Output = SetStatement;
-
-    fn parse(tokens: &mut Tokens) -> RuleResult<SetStatement> {
-        tokens.pop_token_expecting(&Token::Set, "SET")?;
-        // todo implement
-        tokens.skip(7); // todo remove
-        let stub = Ok(SetStatement {
-            update_column: vec!["name".to_string(), "age".to_string()],
-            new_values: vec![
-                Expression::StringLiteral("Rico".to_string()),
-                Expression::Number("33".to_string()),
-            ],
-        });
-        stub
-    }
-}
-
 impl Rule for Table {
     type Output = Table;
     fn parse(tokens: &mut Tokens) -> RuleResult<Table> {
@@ -737,7 +719,9 @@ impl Rule for UpdateStatement {
 
         let table = rule_result_not_first(TableOrSubquery::parse(tokens))?;
 
-        let update = rule_result_not_first(SetStatement::parse(tokens))?;
+        tokens.pop_token_expecting(&Token::Set, "SET")?;
+
+        let assignments = rule_result_not_first(CommaDelimitedRule::<UpdateField>::parse(tokens))?;
 
         let where_expr = if tokens.pop_if_token(&Token::Where) {
             Some(rule_result_not_first(Expression::parse(tokens))?)
@@ -747,8 +731,27 @@ impl Rule for UpdateStatement {
 
         Ok(UpdateStatement {
             table,
-            update,
+            update: assignments,
             where_expr,
+        })
+    }
+}
+
+impl Rule for UpdateField {
+    type Output = UpdateField;
+    fn parse(tokens: &mut Tokens) -> RuleResult<UpdateField> {
+        let mut column_name = tokens.pop_ident_expecting("column name")?;
+        if tokens.pop_if_token(&Token::Dot) {
+            // if column name is {ALIAS.COLUMN_NAME} we take only COLUMN_NAME
+            column_name = rule_result_not_first(tokens.pop_ident_expecting("ident after ."))?;
+        };
+
+        tokens.pop_token_expecting(&Token::Equal, "'='")?;
+        let expression = rule_result_not_first(Expression::parse(tokens))?;
+
+        Ok(UpdateField {
+            column_name,
+            new_values: expression,
         })
     }
 }
