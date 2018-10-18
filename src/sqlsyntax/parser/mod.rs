@@ -9,6 +9,8 @@ mod tokens;
 use self::tokens::Tokens;
 use std::error::Error;
 
+pub type RuleResult<T> = Result<T, RuleError>;
+
 #[derive(PartialEq, Debug)]
 pub enum RuleError {
     ExpectingFirst(&'static str, Option<Token>),
@@ -30,8 +32,6 @@ impl fmt::Display for RuleError {
 
 impl Error for RuleError {}
 
-pub type RuleResult<T> = Result<T, RuleError>;
-
 fn rule_result_not_first<T>(rule_result: RuleResult<T>) -> RuleResult<T> {
     use self::RuleError::*;
 
@@ -41,7 +41,7 @@ fn rule_result_not_first<T>(rule_result: RuleResult<T>) -> RuleResult<T> {
     }
 }
 
-macro_rules! try_notfirst {
+macro_rules! try_notfirst {  // todo remove
     ($r:expr) => {
         (rule_result_not_first($r))?
     };
@@ -328,6 +328,24 @@ impl Rule for AsAlias {
         } else {
             tokens.pop_ident_expecting("alias name or `as` keyword")
         }
+    }
+}
+
+impl Rule for SetStatement {
+    type Output = SetStatement;
+
+    fn parse(tokens: &mut Tokens) -> RuleResult<SetStatement> {
+        tokens.pop_token_expecting(&Token::Set, "SET")?;
+
+        // todo implement
+        let stub = Ok(SetStatement {
+            update_column: vec!["name".to_string(), "age".to_string()],
+            source: InsertSource::Values(vec![
+                vec![Expression::StringLiteral("Rico".to_string()), Expression::Number("33".to_string())],
+                vec![Expression::StringLiteral("Bob".to_string()), Expression::Null]
+            ]),
+        });
+        stub
     }
 }
 
@@ -707,6 +725,29 @@ impl Rule for ExplainStatement {
         } else {
             Err(tokens.expecting("SELECT statement"))
         }
+    }
+}
+
+impl Rule for UpdateStatement {
+    type Output = UpdateStatement;
+    fn parse(tokens: &mut Tokens) -> RuleResult<UpdateStatement> {
+        tokens.pop_token_expecting(&Token::Update, "UPDATE")?;
+
+        let table = rule_result_not_first(TableOrSubquery::parse(tokens))?;
+
+        let update = rule_result_not_first(SetStatement::parse(tokens))?;
+
+        let where_expr = if tokens.pop_if_token(&Token::Where) {
+            Some(rule_result_not_first(Expression::parse(tokens))?)
+        } else {
+            None
+        };
+
+        Ok(UpdateStatement {
+            table,
+            update,
+            where_expr,
+        })
     }
 }
 

@@ -46,6 +46,7 @@ pub enum Token {
     Null,
     Explain,
     Truncate,
+    Set,
 
     // Non-letter tokens
     Equal,

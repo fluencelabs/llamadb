@@ -124,8 +124,13 @@ pub struct OrderingTerm {
 
 #[derive(Debug)]
 pub struct InsertStatement {
+    /// Table for inserting
     pub table: Table,
+
+    /// Column names for filling when inserting
     pub into_columns: Option<Vec<String>>,
+
+    /// New records for inserting.
     pub source: InsertSource,
 }
 
@@ -195,6 +200,28 @@ pub enum ExplainStatement {
 }
 
 #[derive(Debug)]
+pub struct UpdateStatement {
+    /// Table for update
+    pub table: TableOrSubquery,
+
+    /// Column names and value for updating
+    pub update: SetStatement,
+
+    /// 'Where' conditions
+    pub where_expr: Option<Expression>,
+}
+
+/// Representation for `SET col1 = val1, col2 = val2, ...` in update statement.
+#[derive(Debug)]
+pub struct SetStatement {
+    /// Column names for filling when update
+    pub update_column: Vec<String>,
+
+    /// New records for updating.
+    pub source: InsertSource,  // `InsertSource` struct is good suitable here
+}
+
+#[derive(Debug)]
 pub enum Statement {
     Select(SelectStatement),
     Insert(InsertStatement),
@@ -202,4 +229,5 @@ pub enum Statement {
     Delete(DeleteStatement),
     Truncate(TruncateStatement),
     Explain(ExplainStatement),
+    Update(UpdateStatement),
 }

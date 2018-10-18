@@ -227,6 +227,7 @@ impl TempDb {
             ast::Statement::Delete(delete_stmt) => self.delete(delete_stmt),
             ast::Statement::Truncate(truncate_stmt) => self.delete(truncate_stmt.into()),
             ast::Statement::Explain(explain_stmt) => self.explain(explain_stmt),
+            ast::Statement::Update(update_stmt) => self.update(update_stmt),
         }
     }
 
@@ -485,7 +486,11 @@ impl TempDb {
         }
     }
 
-    fn add_table(&mut self, table: Table) -> Result<(), ExecuteError> {
+    fn update(&mut self, _stmt: ast::UpdateStatement) -> ExecuteStatementResult {
+        // todo finish
+        unimplemented!()
+    }
+        fn add_table(&mut self, table: Table) -> Result<(), ExecuteError> {
         if self.tables.iter().any(|t| t.name == table.name) {
             Err(ExecuteError::from_string(format!(
                 "Table {} already exists",
