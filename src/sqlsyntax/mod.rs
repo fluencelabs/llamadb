@@ -112,11 +112,13 @@ mod test {
     use sqlsyntax::ast::SelectColumn::AllColumns;
     use sqlsyntax::ast::SelectColumn::Expr;
     use sqlsyntax::ast::SelectStatement;
+    use sqlsyntax::ast::SetStatement;
     use sqlsyntax::ast::Statement;
     use sqlsyntax::ast::Table;
     use sqlsyntax::ast::TableOrSubquery;
     use sqlsyntax::ast::TableOrSubquery::Subquery;
     use sqlsyntax::ast::TruncateStatement;
+    use sqlsyntax::ast::UpdateStatement;
     use sqlsyntax::ParseError;
     use std::option::Option::Some;
 
@@ -583,6 +585,80 @@ mod test {
                 );
             },
             st => panic!("Expected truncate statement but actually={:?}", st),
+        }
+    }
+
+    #[test]
+    fn update_parsing_test() {
+        let insert_sql1 = parse("UPDATE table1 SET name = 'Rico', age = 33;");
+        match insert_sql1.unwrap() {
+            Statement::Update(UpdateStatement {
+                table,
+                update,
+                where_expr,
+            }) => {
+                assert_eq!(
+                    table,
+                    TableOrSubquery::Table {
+                        table: Table {
+                            database_name: None,
+                            table_name: "table1".to_string(),
+                        },
+                        alias: None
+                    }
+                );
+                assert_eq!(
+                    update,
+                    SetStatement {
+                        update_column: vec!["name".to_string(), "age".to_string()],
+                        new_values: vec![
+                            StringLiteral("Rico".to_string()),
+                            Number("33".to_string())
+                        ],
+                    }
+                );
+                assert_eq!(where_expr, None);
+            },
+            st => panic!("Expected update but actually={:?}", st),
+        }
+
+        let insert_sql1 = parse("UPDATE table1 AS t1 SET name = 'Rico', age = 33 WHERE id = 'Ric'");
+        match insert_sql1.unwrap() {
+            Statement::Update(UpdateStatement {
+                table,
+                update,
+                where_expr,
+            }) => {
+                assert_eq!(
+                    table,
+                    TableOrSubquery::Table {
+                        table: Table {
+                            database_name: None,
+                            table_name: "table1".to_string(),
+                        },
+                        alias: Some("t1".to_string())
+                    }
+                );
+                assert_eq!(
+                    update,
+                    SetStatement {
+                        update_column: vec!["name".to_string(), "age".to_string()],
+                        new_values: vec![
+                            StringLiteral("Rico".to_string()),
+                            Number("33".to_string())
+                        ],
+                    }
+                );
+                assert_eq!(
+                    where_expr,
+                    Some(BinaryOp {
+                        lhs: Box::new(Ident("id".to_string())),
+                        rhs: Box::new(StringLiteral("Ric".to_string())),
+                        op: Equal
+                    })
+                );
+            },
+            st => panic!("Expected update but actually={:?}", st),
         }
     }
 

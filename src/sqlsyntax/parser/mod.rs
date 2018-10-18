@@ -8,6 +8,7 @@ use super::lexer::Token;
 mod tokens;
 use self::tokens::Tokens;
 use std::error::Error;
+use std::option::Option::None;
 
 pub type RuleResult<T> = Result<T, RuleError>;
 
@@ -41,7 +42,8 @@ fn rule_result_not_first<T>(rule_result: RuleResult<T>) -> RuleResult<T> {
     }
 }
 
-macro_rules! try_notfirst {  // todo remove
+macro_rules! try_notfirst {
+    // todo remove
     ($r:expr) => {
         (rule_result_not_first($r))?
     };
@@ -322,9 +324,9 @@ impl Rule for AsAlias {
     fn parse(tokens: &mut Tokens) -> RuleResult<String> {
         if tokens.pop_if_token(&Token::As) {
             // Expecting alias
-            Ok(try_notfirst!(
-                tokens.pop_ident_expecting("alias after `as` keyword")
-            ))
+            Ok(rule_result_not_first(
+                tokens.pop_ident_expecting("alias after `as` keyword"),
+            ))?
         } else {
             tokens.pop_ident_expecting("alias name or `as` keyword")
         }
@@ -336,14 +338,14 @@ impl Rule for SetStatement {
 
     fn parse(tokens: &mut Tokens) -> RuleResult<SetStatement> {
         tokens.pop_token_expecting(&Token::Set, "SET")?;
-
         // todo implement
+        tokens.skip(7); // todo remove
         let stub = Ok(SetStatement {
             update_column: vec!["name".to_string(), "age".to_string()],
-            source: InsertSource::Values(vec![
-                vec![Expression::StringLiteral("Rico".to_string()), Expression::Number("33".to_string())],
-                vec![Expression::StringLiteral("Bob".to_string()), Expression::Null]
-            ]),
+            new_values: vec![
+                Expression::StringLiteral("Rico".to_string()),
+                Expression::Number("33".to_string()),
+            ],
         });
         stub
     }
@@ -366,7 +368,7 @@ impl Rule for TableOrSubquery {
     fn parse(tokens: &mut Tokens) -> RuleResult<TableOrSubquery> {
         if let Some(select) = ParensSurroundRule::<SelectStatement>::parse_lookahead(tokens)? {
             // Subquery
-            let alias = try_notfirst!(AsAlias::parse(tokens));
+            let alias = rule_result_not_first(AsAlias::parse(tokens))?;
 
             Ok(TableOrSubquery::Subquery {
                 subquery: Box::new(select),
@@ -374,7 +376,7 @@ impl Rule for TableOrSubquery {
             })
         } else if let Some(table) = Table::parse_lookahead(tokens)? {
             // Table
-            let alias = try_notfirst!(AsAlias::parse_lookahead(tokens));
+            let alias = rule_result_not_first(AsAlias::parse_lookahead(tokens))?;
 
             Ok(TableOrSubquery::Table { table, alias })
         } else {
@@ -766,6 +768,8 @@ impl Rule for Statement {
             Ok(Statement::Truncate(truncate))
         } else if let Some(explain) = ExplainStatement::parse_lookahead(tokens)? {
             Ok(Statement::Explain(explain))
+        } else if let Some(update) = UpdateStatement::parse_lookahead(tokens)? {
+            Ok(Statement::Update(update))
         } else {
             Err(tokens.expecting("SELECT, INSERT, CREATE, DELETE, TRUNCATE or EXPLAIN statement"))
         }

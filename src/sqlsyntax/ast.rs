@@ -212,13 +212,13 @@ pub struct UpdateStatement {
 }
 
 /// Representation for `SET col1 = val1, col2 = val2, ...` in update statement.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct SetStatement {
     /// Column names for filling when update
     pub update_column: Vec<String>,
 
     /// New records for updating.
-    pub source: InsertSource,  // `InsertSource` struct is good suitable here
+    pub new_values: Vec<Expression>,
 }
 
 #[derive(Debug)]

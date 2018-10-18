@@ -490,7 +490,8 @@ impl TempDb {
         // todo finish
         unimplemented!()
     }
-        fn add_table(&mut self, table: Table) -> Result<(), ExecuteError> {
+
+    fn add_table(&mut self, table: Table) -> Result<(), ExecuteError> {
         if self.tables.iter().any(|t| t.name == table.name) {
             Err(ExecuteError::from_string(format!(
                 "Table {} already exists",

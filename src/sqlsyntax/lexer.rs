@@ -158,6 +158,7 @@ fn word_to_token(word: String) -> Token {
         "null" => Null,
         "explain" => Explain,
         "truncate" => Truncate,
+        "set" => Set,
         _ => Ident(word),
     }
 }
