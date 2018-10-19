@@ -607,11 +607,11 @@ mod test {
                     vec![
                         UpdateField {
                             column_name: "name".to_string(),
-                            new_values: StringLiteral("Rico".to_string()),
+                            new_value: StringLiteral("Rico".to_string()),
                         },
                         UpdateField {
                             column_name: "age".to_string(),
-                            new_values: Number("33".to_string()),
+                            new_value: Number("33".to_string()),
                         },
                     ]
                 );
@@ -642,11 +642,11 @@ mod test {
                     vec![
                         UpdateField {
                             column_name: "name".to_string(),
-                            new_values: StringLiteral("Rico".to_string()),
+                            new_value: StringLiteral("Rico".to_string()),
                         },
                         UpdateField {
                             column_name: "age".to_string(),
-                            new_values: Number("33".to_string()),
+                            new_value: Number("33".to_string()),
                         },
                     ]
                 );
@@ -687,7 +687,7 @@ mod test {
                     vec![
                         UpdateField {
                             column_name: "name".to_string(),
-                            new_values: ast::Expression::Subquery(Box::new(SelectStatement {
+                            new_value: ast::Expression::Subquery(Box::new(SelectStatement {
                                 result_columns: vec![ast::SelectColumn::Expr {
                                     expr: IdentMember("u1".to_string(), "name".into()),
                                     alias: None
@@ -711,7 +711,7 @@ mod test {
                         },
                         UpdateField {
                             column_name: "age".to_string(),
-                            new_values: ast::Expression::Subquery(Box::new(SelectStatement {
+                            new_value: ast::Expression::Subquery(Box::new(SelectStatement {
                                 result_columns: vec![ast::SelectColumn::Expr {
                                     expr: ast::Expression::FunctionCall {
                                         name: "avg".to_string(),

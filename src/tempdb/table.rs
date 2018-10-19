@@ -80,8 +80,21 @@ impl TableInfo for Table {
 }
 
 impl Table {
+    pub fn update_row(
+        &mut self,
+        old_row: &[u8],
+        new_val: (usize, Box<[u8]>, bool),
+    ) -> Result<bool, UpdateError> {
+        // todo implement!!!!
+        println!(
+            ">>>>> ROW UPDATED old_val={:?}, new_val={:?}",
+            old_row, new_val
+        );
+        Ok(true)
+    }
+
     /// rowid is automatically added, and is not included as a specified column
-    pub fn insert_row<I>(&mut self, column_data: I) -> Result<(), UpdateError>
+    pub fn insert_new_row<I>(&mut self, column_data: I) -> Result<(), UpdateError>
     where
         I: ExactSizeIterator,
         I: Iterator<Item = (Box<[u8]>, Option<bool>)>,

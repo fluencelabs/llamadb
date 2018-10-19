@@ -751,7 +751,7 @@ impl Rule for UpdateField {
 
         Ok(UpdateField {
             column_name,
-            new_values: expression,
+            new_value: expression,
         })
     }
 }

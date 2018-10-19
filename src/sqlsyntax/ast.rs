@@ -199,7 +199,7 @@ pub enum ExplainStatement {
     Select(SelectStatement),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UpdateStatement {
     /// Table for update.
     pub table: TableOrSubquery,
@@ -212,13 +212,13 @@ pub struct UpdateStatement {
     pub where_expr: Option<Expression>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UpdateField {
     /// Column name to assignment.
     pub column_name: String,
 
     /// New record for updating.
-    pub new_values: Expression,
+    pub new_value: Expression,
 }
 
 #[derive(Debug)]
