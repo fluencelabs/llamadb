@@ -134,23 +134,14 @@ impl<'a> Group for ScanGroup<'a> {
         Box::new(table.rows_set.iter().map(move |key_v| {
             use byteutils;
 
-            let raw_key: &[u8] = &key_v;
-            trace!("KEY: {:?}", raw_key);
+            let row: &[u8] = &key_v;
+            trace!("row: {:?}", row);
 
-            let variable_column_count = columns
-                .iter()
-                .filter(|column| column.dbtype.is_variable_length())
-                .count();
-
-            let variable_lengths: Vec<_> = (0..variable_column_count)
-                .map(|i| {
-                    let o = raw_key.len() - variable_column_count * 8 + i * 8;
-                    byteutils::read_udbinteger(&raw_key[o..o + 8])
-                }).collect();
+            let variable_lengths = table.read_data_length(row);
 
             trace!("variable lengths: {:?}", variable_lengths);
 
-            let _rowid: u64 = byteutils::read_udbinteger(&raw_key[0..8]);
+            let _rowid: u64 = byteutils::read_udbinteger(&row[0..8]);
 
             let mut variable_length_offset = 0;
             let mut key_offset = 8;
@@ -159,7 +150,7 @@ impl<'a> Group for ScanGroup<'a> {
                 .iter()
                 .map(|column| {
                     let is_null = if column.nullable {
-                        let flag = raw_key[key_offset];
+                        let flag = row[key_offset];
                         key_offset += 1;
                         flag != 0
                     } else {
@@ -178,7 +169,7 @@ impl<'a> Group for ScanGroup<'a> {
                             },
                         };
 
-                        let bytes = &raw_key[key_offset..key_offset + size];
+                        let bytes = &row[key_offset..key_offset + size];
 
                         trace!("from bytes: {:?}, {:?}", column.dbtype, bytes);
                         let value =
@@ -556,9 +547,8 @@ impl TempDb {
                 let value = execute.execute_expression(&sexpr)?;
                 let is_null = variant_to_data(value, dbtype, nullable, &mut buf)?;
 
-                Ok((col_offset, buf.into_boxed_slice(), is_null.unwrap_or(false)))
-                
-            }).collect::<Result<Vec<_>, ExecuteError>>()?;
+                Ok((col_offset, (buf.into_boxed_slice(), is_null)))
+            }).collect::<Result<HashMap<usize, _>, ExecuteError>>()?;
 
         trace!("New values for update {:?}", new_values_for_update);
 
@@ -570,6 +560,7 @@ impl TempDb {
 
             let execute = ExecuteQueryPlan::new(self);
             execute.execute_query_plan(&plan.expr, &mut |_| Ok(()), &mut |row_as_bytes| {
+                // collect all selected rows for update
                 rows_selected_for_update.insert(row_as_bytes.clone());
                 Ok(())
             })?;
@@ -577,8 +568,8 @@ impl TempDb {
 
         let table = self.get_table_mut(&table_name)?;
         let rows_updated = rows_selected_for_update.len();
-        for (old_row, new_data) in rows_selected_for_update.iter().zip(new_values_for_update) {
-            table.update_row(old_row.as_slice(), new_data)?;
+        for old_row in rows_selected_for_update {
+            table.update_row(old_row.as_slice(), &new_values_for_update)?;
         }
 
         Ok(Updated(rows_updated))
@@ -674,7 +665,18 @@ mod test {
     }
 
     fn row_in_table(db: &mut TempDb, t_name: &str) -> Result<usize, ExecuteError> {
-        let res = db.do_query(&format!("select count(*) from {};", t_name))?;
+        row_in_table_where(db, t_name, "")
+    }
+
+    fn row_in_table_where(
+        db: &mut TempDb,
+        t_name: &str,
+        where_condition: &str,
+    ) -> Result<usize, ExecuteError> {
+        let res = db.do_query(&format!(
+            "select count(*) from {} {};",
+            t_name, where_condition
+        ))?;
         let result = match res {
             ExecuteStatementResponse::Select {
                 column_names: _,
@@ -775,16 +777,24 @@ mod test {
 
         assert_eq!(row_in_table(db, "Users").unwrap(), 3);
 
-        match db
-            .do_query("update Users set name = 'u p d a t e d';")
-            .unwrap()
-        {
+        match db.do_query("update Users set age = 0").unwrap() {
             ExecuteStatementResponse::Updated(number_of_rows) => assert_eq!(number_of_rows, 3),
             _ => panic!("Expected Update result"),
         };
+        assert_eq!(row_in_table_where(db, "Users", "where age = 0").unwrap(), 3);
 
-        // todo finish
-
-        assert_eq!(row_in_table(db, "Users").unwrap(), 3);
+        match db
+            .do_query(
+                "update Users as u set u.name = 'unknown', u.age = -1 \
+                 where u.name = (select u3.name from Users u3 where u3.id = 1);",
+            ).unwrap()
+        {
+            ExecuteStatementResponse::Updated(number_of_rows) => assert_eq!(number_of_rows, 1),
+            _ => panic!("Expected Update result"),
+        };
+        assert_eq!(
+            row_in_table_where(db, "Users", "where name = 'unknown' and age = -1").unwrap(),
+            1
+        );
     }
 }
