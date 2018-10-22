@@ -723,7 +723,11 @@ mod test {
                 assert_eq!(column_names.to_vec(), vec!["id", "name", "age"]);
                 assert_eq!(
                     rows_to_strings(rows),
-                    vec!["1, Isaac Asimov, 50", "2, Stanislaw Lem, 40", "3, Liu Cixin, 30"]
+                    vec![
+                        "1, Isaac Asimov, 50",
+                        "2, Stanislaw Lem, 40",
+                        "3, Liu Cixin, 30"
+                    ]
                 );
             },
             _ => panic!("Expected Select result"),
@@ -740,31 +744,34 @@ mod test {
             _ => panic!("Expected Select result"),
         };
 
-        match db.do_query("select avg(age) as avg, name from Users group by age having id > 2").unwrap() {
+        match db
+            .do_query("select avg(age) as avg, name from Users group by age having id > 2")
+            .unwrap()
+        {
             ExecuteStatementResponse::Select { column_names, rows } => {
                 assert_eq!(column_names.to_vec(), vec!["avg", "name"]);
-                assert_eq!(
-                    rows_to_strings(rows),
-                    vec!["30, Liu Cixin"]
-                );
+                assert_eq!(rows_to_strings(rows), vec!["30, Liu Cixin"]);
             },
             _ => panic!("Expected Select result"),
         };
 
-        match db.do_query("select min(age) as min, max(age) as max, count(age) as count, sum(age) as \
-            sum, avg(age) as avg FROM Users").unwrap() {
+        match db
+            .do_query(
+                "select min(age) as min, max(age) as max, count(age) as count, sum(age) as \
+                 sum, avg(age) as avg FROM Users",
+            ).unwrap()
+        {
             ExecuteStatementResponse::Select { column_names, rows } => {
-                assert_eq!(column_names.to_vec(), vec!["min", "max", "count", "sum", "avg"]);
                 assert_eq!(
-                    rows_to_strings(rows),
-                    vec!["30, 50, 3, 120, 40"]
+                    column_names.to_vec(),
+                    vec!["min", "max", "count", "sum", "avg"]
                 );
+                assert_eq!(rows_to_strings(rows), vec!["30, 50, 3, 120, 40"]);
             },
             _ => panic!("Expected Select result"),
         };
 
         // todo add more test cases, including join, sub queries and so on
-
     }
 
     #[test]
