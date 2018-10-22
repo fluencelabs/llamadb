@@ -124,8 +124,13 @@ pub struct OrderingTerm {
 
 #[derive(Debug)]
 pub struct InsertStatement {
+    /// Table for inserting
     pub table: Table,
+
+    /// Column names for filling when inserting
     pub into_columns: Option<Vec<String>>,
+
+    /// New records for inserting.
     pub source: InsertSource,
 }
 
@@ -177,18 +182,43 @@ pub enum CreateStatement {
 
 #[derive(Debug, Clone)]
 pub struct DeleteStatement {
-    pub from: From,
+    /// Table for deleting row.
+    pub table: TableOrSubquery,
+    /// 'Where' condition
     pub where_expr: Option<Expression>,
 }
 
 #[derive(Debug, Clone)]
 pub struct TruncateStatement {
+    /// Table for clearing.
     pub table: Table,
 }
 
 #[derive(Debug)]
 pub enum ExplainStatement {
     Select(SelectStatement),
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdateStatement {
+    /// Table for update.
+    pub table: TableOrSubquery,
+
+    /// Column names and value for updating.
+    /// Representation for `SET col1 = val1, col2 = val2, ...` in update statement.
+    pub update: Vec<UpdateField>, // tood change to Vec<UpdateField>
+
+    /// 'Where' conditions.
+    pub where_expr: Option<Expression>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UpdateField {
+    /// Column name to assignment.
+    pub column_name: String,
+
+    /// New record for updating.
+    pub new_value: Expression,
 }
 
 #[derive(Debug)]
@@ -199,4 +229,5 @@ pub enum Statement {
     Delete(DeleteStatement),
     Truncate(TruncateStatement),
     Explain(ExplainStatement),
+    Update(UpdateStatement),
 }

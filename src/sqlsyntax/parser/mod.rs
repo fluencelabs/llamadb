@@ -8,6 +8,9 @@ use super::lexer::Token;
 mod tokens;
 use self::tokens::Tokens;
 use std::error::Error;
+use std::option::Option::None;
+
+pub type RuleResult<T> = Result<T, RuleError>;
 
 #[derive(PartialEq, Debug)]
 pub enum RuleError {
@@ -30,8 +33,6 @@ impl fmt::Display for RuleError {
 
 impl Error for RuleError {}
 
-pub type RuleResult<T> = Result<T, RuleError>;
-
 fn rule_result_not_first<T>(rule_result: RuleResult<T>) -> RuleResult<T> {
     use self::RuleError::*;
 
@@ -42,6 +43,7 @@ fn rule_result_not_first<T>(rule_result: RuleResult<T>) -> RuleResult<T> {
 }
 
 macro_rules! try_notfirst {
+    // todo remove
     ($r:expr) => {
         (rule_result_not_first($r))?
     };
@@ -322,9 +324,9 @@ impl Rule for AsAlias {
     fn parse(tokens: &mut Tokens) -> RuleResult<String> {
         if tokens.pop_if_token(&Token::As) {
             // Expecting alias
-            Ok(try_notfirst!(
-                tokens.pop_ident_expecting("alias after `as` keyword")
-            ))
+            Ok(rule_result_not_first(
+                tokens.pop_ident_expecting("alias after `as` keyword"),
+            ))?
         } else {
             tokens.pop_ident_expecting("alias name or `as` keyword")
         }
@@ -348,7 +350,7 @@ impl Rule for TableOrSubquery {
     fn parse(tokens: &mut Tokens) -> RuleResult<TableOrSubquery> {
         if let Some(select) = ParensSurroundRule::<SelectStatement>::parse_lookahead(tokens)? {
             // Subquery
-            let alias = try_notfirst!(AsAlias::parse(tokens));
+            let alias = rule_result_not_first(AsAlias::parse(tokens))?;
 
             Ok(TableOrSubquery::Subquery {
                 subquery: Box::new(select),
@@ -356,7 +358,7 @@ impl Rule for TableOrSubquery {
             })
         } else if let Some(table) = Table::parse_lookahead(tokens)? {
             // Table
-            let alias = try_notfirst!(AsAlias::parse_lookahead(tokens));
+            let alias = rule_result_not_first(AsAlias::parse_lookahead(tokens))?;
 
             Ok(TableOrSubquery::Table { table, alias })
         } else {
@@ -388,7 +390,14 @@ impl Rule for DeleteStatement {
         // it doesn't matter '*' is or isn't in delete statement
         tokens.pop_if_token(&Token::Asterisk);
 
-        let from = try_notfirst!(From::parse(tokens));
+        let from_token = tokens.pop_expecting("FROM")?;
+        if *from_token != Token::From {
+            return Err(RuleError::Expecting("FROM", Some(from_token.clone())));
+        } else {
+            tokens.expecting("FROM");
+        }
+
+        let table = try_notfirst!(TableOrSubquery::parse(tokens));
 
         let where_expr = if tokens.pop_if_token(&Token::Where) {
             Some(try_notfirst!(Expression::parse(tokens)))
@@ -396,7 +405,7 @@ impl Rule for DeleteStatement {
             None
         };
 
-        Ok(DeleteStatement { from, where_expr })
+        Ok(DeleteStatement { table, where_expr })
     }
 }
 
@@ -703,6 +712,50 @@ impl Rule for ExplainStatement {
     }
 }
 
+impl Rule for UpdateStatement {
+    type Output = UpdateStatement;
+    fn parse(tokens: &mut Tokens) -> RuleResult<UpdateStatement> {
+        tokens.pop_token_expecting(&Token::Update, "UPDATE")?;
+
+        let table = rule_result_not_first(TableOrSubquery::parse(tokens))?;
+
+        tokens.pop_token_expecting(&Token::Set, "SET")?;
+
+        let assignments = rule_result_not_first(CommaDelimitedRule::<UpdateField>::parse(tokens))?;
+
+        let where_expr = if tokens.pop_if_token(&Token::Where) {
+            Some(rule_result_not_first(Expression::parse(tokens))?)
+        } else {
+            None
+        };
+
+        Ok(UpdateStatement {
+            table,
+            update: assignments,
+            where_expr,
+        })
+    }
+}
+
+impl Rule for UpdateField {
+    type Output = UpdateField;
+    fn parse(tokens: &mut Tokens) -> RuleResult<UpdateField> {
+        let mut column_name = tokens.pop_ident_expecting("column name")?;
+        if tokens.pop_if_token(&Token::Dot) {
+            // if column name is {ALIAS.COLUMN_NAME} we take only COLUMN_NAME
+            column_name = rule_result_not_first(tokens.pop_ident_expecting("ident after ."))?;
+        };
+
+        tokens.pop_token_expecting(&Token::Equal, "'='")?;
+        let expression = rule_result_not_first(Expression::parse(tokens))?;
+
+        Ok(UpdateField {
+            column_name,
+            new_value: expression,
+        })
+    }
+}
+
 impl Rule for Statement {
     type Output = Statement;
     fn parse(tokens: &mut Tokens) -> RuleResult<Statement> {
@@ -718,6 +771,8 @@ impl Rule for Statement {
             Ok(Statement::Truncate(truncate))
         } else if let Some(explain) = ExplainStatement::parse_lookahead(tokens)? {
             Ok(Statement::Explain(explain))
+        } else if let Some(update) = UpdateStatement::parse_lookahead(tokens)? {
+            Ok(Statement::Update(update))
         } else {
             Err(tokens.expecting("SELECT, INSERT, CREATE, DELETE, TRUNCATE or EXPLAIN statement"))
         }

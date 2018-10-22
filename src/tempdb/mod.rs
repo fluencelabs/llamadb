@@ -20,7 +20,9 @@ use databasestorage::RawRow;
 use queryplan::QueryPlanCompileError;
 use sqlsyntax;
 use sqlsyntax::ast::TableOrSubquery;
+use sqlsyntax::ast::UpdateField;
 use sqlsyntax::ParseError;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
@@ -29,6 +31,7 @@ use std::option::Option::None;
 use std::option::Option::Some;
 use tempdb::table::Column;
 use tempdb::table::UpdateError;
+use tempdb::ExecuteStatementResponse::Updated;
 
 pub struct TempDb {
     tables: Vec<Table>,
@@ -43,6 +46,7 @@ pub enum ExecuteStatementResponse<'a> {
     },
     Deleted(usize),
     Explain(String),
+    Updated(usize),
 }
 
 #[derive(PartialEq, Debug)]
@@ -130,23 +134,14 @@ impl<'a> Group for ScanGroup<'a> {
         Box::new(table.rows_set.iter().map(move |key_v| {
             use byteutils;
 
-            let raw_key: &[u8] = &key_v;
-            trace!("KEY: {:?}", raw_key);
+            let row: &[u8] = &key_v;
+            trace!("row: {:?}", row);
 
-            let variable_column_count = columns
-                .iter()
-                .filter(|column| column.dbtype.is_variable_length())
-                .count();
-
-            let variable_lengths: Vec<_> = (0..variable_column_count)
-                .map(|i| {
-                    let o = raw_key.len() - variable_column_count * 8 + i * 8;
-                    byteutils::read_udbinteger(&raw_key[o..o + 8])
-                }).collect();
+            let variable_lengths = table.read_data_length(row);
 
             trace!("variable lengths: {:?}", variable_lengths);
 
-            let _rowid: u64 = byteutils::read_udbinteger(&raw_key[0..8]);
+            let _rowid: u64 = byteutils::read_udbinteger(&row[0..8]);
 
             let mut variable_length_offset = 0;
             let mut key_offset = 8;
@@ -155,7 +150,7 @@ impl<'a> Group for ScanGroup<'a> {
                 .iter()
                 .map(|column| {
                     let is_null = if column.nullable {
-                        let flag = raw_key[key_offset];
+                        let flag = row[key_offset];
                         key_offset += 1;
                         flag != 0
                     } else {
@@ -174,7 +169,7 @@ impl<'a> Group for ScanGroup<'a> {
                             },
                         };
 
-                        let bytes = &raw_key[key_offset..key_offset + size];
+                        let bytes = &row[key_offset..key_offset + size];
 
                         trace!("from bytes: {:?}, {:?}", column.dbtype, bytes);
                         let value =
@@ -227,6 +222,7 @@ impl TempDb {
             ast::Statement::Delete(delete_stmt) => self.delete(delete_stmt),
             ast::Statement::Truncate(truncate_stmt) => self.delete(truncate_stmt.into()),
             ast::Statement::Explain(explain_stmt) => self.explain(explain_stmt),
+            ast::Statement::Update(update_stmt) => self.update(update_stmt),
         }
     }
 
@@ -311,7 +307,7 @@ impl TempDb {
                         match table.find_column_by_name(&ident) {
                             Some(column) => Ok(column.get_offset()),
                             None => Err(ExecuteError::from_string(format!(
-                                "column {} not in table",
+                                "column {} is not in table",
                                 column_name
                             ))),
                         }
@@ -378,7 +374,7 @@ impl TempDb {
 
                     let mut table = self.get_table_mut(&table_name)?;
                     table
-                        .insert_row(v.into_iter())
+                        .insert_new_row(v.into_iter())
                         .map_err(|e| ExecuteError::from_string(e.to_string()))?;
                     count += 1;
                 }
@@ -424,58 +420,51 @@ impl TempDb {
 
         let stmt_clone = stmt.clone();
 
-        match &stmt.from {
-            ast::From::Cross(vec) => {
-                match vec.as_slice() {
-                    [TableOrSubquery::Table { table, .. }] => {
-                        match stmt.where_expr {
-                            None => {
-                                let table = self.get_table_mut(&table.table_name)?;
+        match &stmt.table {
+            TableOrSubquery::Table { table, .. } => {
+                match stmt.where_expr {
+                    None => {
+                        let table = self.get_table_mut(&table.table_name)?;
 
-                                // the same as Truncate, remove all rows from table
-                                table
-                                    .truncate()
-                                    .map_err(ExecuteError::from)
-                                    .map(ExecuteStatementResponse::Deleted)
-                            },
-                            Some(_) => {
-                                let mut selected_rows = HashSet::<Vec<u8>>::new();
-
-                                {
-                                    let plan = QueryPlan::compile_delete(self, stmt_clone)
-                                        .map_err(ExecuteError::from)?;
-                                    debug!("{}", plan);
-
-                                    let execute = ExecuteQueryPlan::new(self);
-                                    execute.execute_query_plan(
-                                        &plan.expr,
-                                        &mut |_| Ok(()),
-                                        &mut |row_as_bytes| {
-                                            selected_rows.insert(row_as_bytes);
-                                            Ok(())
-                                        },
-                                    )?;
-                                }
-
-                                // do delete
-
-                                let mut table = self.get_table_mut(&table.table_name)?;
-                                let row_deleted = selected_rows.len();
-                                for row in selected_rows {
-                                    table.delete_row(row.as_slice())?;
-                                }
-
-                                Ok(ExecuteStatementResponse::Deleted(row_deleted))
-                            },
-                        }
+                        // the same as Truncate, remove all rows from table
+                        table
+                            .truncate()
+                            .map_err(ExecuteError::from)
+                            .map(ExecuteStatementResponse::Deleted)
                     },
-                    _ => Err(ExecuteError::new(
-                        "One table allowed in DELETE statement; Sub queries isn't supported.",
-                    )),
+                    Some(_) => {
+                        let mut selected_rows = HashSet::<Vec<u8>>::new();
+
+                        {
+                            let plan = QueryPlan::compile_delete(self, stmt_clone)
+                                .map_err(ExecuteError::from)?;
+                            debug!("delete plan: {}", plan);
+
+                            let execute = ExecuteQueryPlan::new(self);
+                            execute.execute_query_plan(
+                                &plan.expr,
+                                &mut |_| Ok(()),
+                                &mut |row_as_bytes| {
+                                    selected_rows.insert(row_as_bytes.clone());
+                                    Ok(())
+                                },
+                            )?;
+                        }
+
+                        // do delete
+
+                        let mut table = self.get_table_mut(&table.table_name)?;
+                        let row_deleted = selected_rows.len();
+                        for row in selected_rows {
+                            table.delete_row(row.as_slice())?;
+                        }
+
+                        Ok(ExecuteStatementResponse::Deleted(row_deleted))
+                    },
                 }
             },
-            ast::From::Join { .. } => Err(ExecuteError::new(
-                "JOIN is not supported into DELETE statement",
+            _ => Err(ExecuteError::new(
+                "Subqueries instead of a Table name isn't allowed.",
             )),
         }
     }
@@ -490,6 +479,100 @@ impl TempDb {
                 Ok(ExecuteStatementResponse::Explain(plan.to_string()))
             },
         }
+    }
+
+    fn update(&mut self, stmt: ast::UpdateStatement) -> ExecuteStatementResult {
+        trace!("update statement {:?}", stmt);
+
+        let stmt_clone = stmt.clone();
+        let table_name;
+
+        if let TableOrSubquery::Table { table, .. } = stmt.table {
+            table_name = table.table_name
+        } else {
+            return Err(ExecuteError::new(
+                "Expected name of updated table, got subquery.",
+            ));
+        }
+
+        let column_types_in_table: Vec<(DbType, bool)> = {
+            let table = self.get_table_mut(&table_name)?;
+
+            table
+                .get_columns()
+                .iter()
+                .map(|c| (c.dbtype, c.nullable))
+                .collect()
+        };
+
+        let col_idx_to_ast_idx: HashMap<usize, ast::Expression> = {
+            let table = self.get_table_mut(&table_name)?;
+
+            stmt.update
+                .into_iter()
+                .map(
+                    |UpdateField {
+                         column_name,
+                         new_value,
+                     }| {
+                        let ident = Identifier::new(&column_name)
+                            .ok_or(ExecuteError::new("Invalid column name."))?;
+
+                        let col_idx = match table.find_column_by_name(&ident) {
+                            Some(column) => Ok(column.get_offset() as usize),
+                            None => Err(ExecuteError::from_string(format!(
+                                "column {} is not in table",
+                                column_name
+                            ))),
+                        };
+
+                        Ok((col_idx?, new_value))
+                    },
+                ).collect::<Result<HashMap<usize, ast::Expression>, ExecuteError>>()?
+        };
+
+        trace!("col_idx_to_ast_idx: {:?}", col_idx_to_ast_idx);
+
+        let new_values_for_update = col_idx_to_ast_idx
+            .into_iter()
+            .map(|(col_offset, expr)| {
+                let (dbtype, nullable) = column_types_in_table[col_offset]; // should never be failed
+                let mut buf = Vec::new();
+
+                let execute = ExecuteQueryPlan::new(self);
+
+                let sexpr =
+                    queryplan::compile_ast_expression(self, expr).map_err(ExecuteError::from)?;
+
+                let value = execute.execute_expression(&sexpr)?;
+                let is_null = variant_to_data(value, dbtype, nullable, &mut buf)?;
+
+                Ok((col_offset, (buf.into_boxed_slice(), is_null)))
+            }).collect::<Result<HashMap<usize, _>, ExecuteError>>()?;
+
+        trace!("New values for update {:?}", new_values_for_update);
+
+        let mut rows_selected_for_update = HashSet::<Vec<u8>>::new();
+
+        {
+            let plan = QueryPlan::compile_update(self, stmt_clone).map_err(ExecuteError::from)?;
+            debug!("update plan: {}", plan);
+
+            let execute = ExecuteQueryPlan::new(self);
+            execute.execute_query_plan(&plan.expr, &mut |_| Ok(()), &mut |row_as_bytes| {
+                // collect all selected rows for update
+                rows_selected_for_update.insert(row_as_bytes.clone());
+                Ok(())
+            })?;
+        }
+
+        let table = self.get_table_mut(&table_name)?;
+        let rows_updated = rows_selected_for_update.len();
+        for old_row in rows_selected_for_update {
+            table.update_row(old_row.as_slice(), &new_values_for_update)?;
+        }
+
+        Ok(Updated(rows_updated))
     }
 
     fn add_table(&mut self, table: Table) -> Result<(), ExecuteError> {
@@ -582,7 +665,18 @@ mod test {
     }
 
     fn row_in_table(db: &mut TempDb, t_name: &str) -> Result<usize, ExecuteError> {
-        let res = db.do_query(&format!("select count(*) from {};", t_name))?;
+        row_in_table_where(db, t_name, "")
+    }
+
+    fn row_in_table_where(
+        db: &mut TempDb,
+        t_name: &str,
+        where_condition: &str,
+    ) -> Result<usize, ExecuteError> {
+        let res = db.do_query(&format!(
+            "select count(*) from {} {};",
+            t_name, where_condition
+        ))?;
         let result = match res {
             ExecuteStatementResponse::Select {
                 column_names: _,
@@ -673,5 +767,34 @@ mod test {
         };
 
         assert_eq!(row_in_table(db, "Users").unwrap(), 0);
+    }
+
+    #[test]
+    fn update_test() {
+        let db = &mut TempDb::new();
+        create_table(db, "Users").unwrap();
+        fill_table(db, "Users").unwrap();
+
+        assert_eq!(row_in_table(db, "Users").unwrap(), 3);
+
+        match db.do_query("update Users set age = 0").unwrap() {
+            ExecuteStatementResponse::Updated(number_of_rows) => assert_eq!(number_of_rows, 3),
+            _ => panic!("Expected Update result"),
+        };
+        assert_eq!(row_in_table_where(db, "Users", "where age = 0").unwrap(), 3);
+
+        match db
+            .do_query(
+                "update Users as u set u.name = 'unknown', u.age = -1 \
+                 where u.name = (select u3.name from Users u3 where u3.id = 1);",
+            ).unwrap()
+        {
+            ExecuteStatementResponse::Updated(number_of_rows) => assert_eq!(number_of_rows, 1),
+            _ => panic!("Expected Update result"),
+        };
+        assert_eq!(
+            row_in_table_where(db, "Users", "where name = 'unknown' and age = -1").unwrap(),
+            1
+        );
     }
 }

@@ -89,7 +89,7 @@ where
         expr: &SExpression<'a, Storage::Info>,
         row_cb: &'c mut FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue])
             -> Result<(), ExecuteError>,
-        raw_row_cb: &'c mut FnMut(Vec<u8>) -> Result<(), ExecuteError>,
+        raw_row_cb: &'c mut FnMut(&Vec<u8>) -> Result<(), ExecuteError>,
     ) -> Result<(), ExecuteError> {
         self.execute(expr, row_cb, None, raw_row_cb)
         // TODO: row_cb should yield a boxed array instead of a reference
@@ -108,7 +108,7 @@ where
         row_cb: &'c mut FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue])
             -> Result<(), ExecuteError>,
         source: Option<&Source<'b, <Storage::Info as DatabaseInfo>::ColumnValue>>,
-        raw_row_cb: &'c mut FnMut(Vec<u8>) -> Result<(), ExecuteError>,
+        raw_row_cb: &'c mut FnMut(&Vec<u8>) -> Result<(), ExecuteError>,
     ) -> Result<(), ExecuteError> {
         match expr {
             &SExpression::Scan {
@@ -250,7 +250,7 @@ where
                 let src: &Source<_> = source.unwrap();
                 match src.source_type {
                     SourceType::RawRow(_, raw_row) => {
-                        raw_row_cb(raw_row.clone())?;
+                        raw_row_cb(raw_row)?;
                     },
                     _ => {}, // do nothing
                 }

@@ -12,6 +12,8 @@ mod source;
 pub use self::execute::*;
 pub use self::sexpression::*;
 use self::source::*;
+use queryplan::source::TableOrSubquery;
+use sqlsyntax::ast::From::Cross;
 use sqlsyntax::ast::SelectColumn;
 
 pub enum QueryPlanCompileError {
@@ -75,28 +77,22 @@ where
         stmt: ast::SelectStatement,
     ) -> Result<QueryPlan<'a, DB>, QueryPlanCompileError> {
         let scope = SourceScope::new(None, Vec::new(), Vec::new());
-
-        let mut source_id_to_query_id = HashMap::new();
         let mut query_to_aggregated_source_id = HashMap::new();
-        let mut next_source_id = 0;
-        let mut next_query_id = 1;
-
         let mut groups_info = GroupsInfo::new();
 
         let plan = {
             let compiler = QueryCompiler {
                 query_id: 0,
                 db,
-                source_id_to_query_id: &mut source_id_to_query_id,
+                source_id_to_query_id: &mut HashMap::new(),
                 query_to_aggregated_source_id: &mut query_to_aggregated_source_id,
-                next_source_id: &mut next_source_id,
-                next_query_id: &mut next_query_id,
+                next_source_id: &mut 0,
+                next_query_id: &mut 1,
             };
 
             compiler.compile(stmt, &scope, &mut groups_info)
         };
 
-        debug!("source id to query id; {:?}", source_id_to_query_id);
         debug!(
             "query to aggregated source id; {:?}",
             query_to_aggregated_source_id
@@ -111,12 +107,7 @@ where
         stmt: ast::DeleteStatement,
     ) -> Result<QueryPlan<'a, DB>, QueryPlanCompileError> {
         let scope = SourceScope::new(None, Vec::new(), Vec::new());
-
         let mut source_id_to_query_id = HashMap::new();
-        let mut query_to_aggregated_source_id = HashMap::new();
-        let mut next_source_id = 0;
-        let mut next_query_id = 1;
-
         let mut groups_info = GroupsInfo::new();
 
         let plan = {
@@ -124,13 +115,55 @@ where
                 query_id: 0,
                 db,
                 source_id_to_query_id: &mut source_id_to_query_id,
-                query_to_aggregated_source_id: &mut query_to_aggregated_source_id,
-                next_source_id: &mut next_source_id,
-                next_query_id: &mut next_query_id,
+                query_to_aggregated_source_id: &mut HashMap::new(),
+                next_source_id: &mut 0,
+                next_query_id: &mut 1,
             };
 
+            let from = Cross(vec![stmt.table]);
             let (new_scope, from_where) =
-                compiler.from_where(stmt.from, stmt.where_expr, &scope, &mut groups_info)?;
+                compiler.from_where(from, stmt.where_expr, &scope, &mut groups_info)?;
+
+            let (out_column_names, select_exprs) =
+                compiler.select(vec![SelectColumn::AllColumns], &new_scope, &mut groups_info)?;
+
+            let expr = from_where.evaluate(SExpression::Yield {
+                fields: select_exprs,
+            });
+
+            Ok(QueryPlan {
+                expr,
+                out_column_names,
+            })
+        };
+
+        debug!("source id to query id; {:?}", source_id_to_query_id);
+
+        plan
+    }
+
+    /// Compiles specified [UpdateStatement] and returns for it a [QueryPlan].
+    pub fn compile_update(
+        db: &'a DB,
+        stmt: ast::UpdateStatement,
+    ) -> Result<QueryPlan<'a, DB>, QueryPlanCompileError> {
+        let scope = SourceScope::new(None, Vec::new(), Vec::new());
+        let mut source_id_to_query_id = HashMap::new();
+        let mut groups_info = GroupsInfo::new();
+
+        let plan = {
+            let mut compiler = QueryCompiler {
+                query_id: 0,
+                db,
+                source_id_to_query_id: &mut source_id_to_query_id,
+                query_to_aggregated_source_id: &mut HashMap::new(),
+                next_source_id: &mut 0,
+                next_query_id: &mut 1,
+            };
+
+            let from = Cross(vec![stmt.table]);
+            let (new_scope, from_where) =
+                compiler.from_where(from, stmt.where_expr, &scope, &mut groups_info)?;
 
             let (out_column_names, select_exprs) =
                 compiler.select(vec![SelectColumn::AllColumns], &new_scope, &mut groups_info)?;

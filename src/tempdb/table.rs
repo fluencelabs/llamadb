@@ -2,6 +2,7 @@ use byteutils;
 use databaseinfo::{ColumnInfo, TableInfo};
 use identifier::Identifier;
 use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::fmt;
 use types::DbType;
 
@@ -80,8 +81,105 @@ impl TableInfo for Table {
 }
 
 impl Table {
+    /// Reads data (column records/values) for specified row.
+    pub fn read_data(&self, raw_key: &[u8]) -> Vec<(Box<[u8]>, Option<bool>)> {
+        debug!("read_data starts with row={:?}", raw_key);
+        let data_len = self.read_data_length(&raw_key);
+
+        debug!("data section length is: {:?}", data_len);
+
+        let mut variable_length_offset = 0;
+        let mut key_offset = 8;
+
+        let result = self
+            .columns
+            .iter()
+            .map(|column| {
+                let is_null = if column.nullable {
+                    let flag = raw_key[key_offset];
+                    key_offset += 1;
+                    Some(flag != 0)
+                } else {
+                    None // if column isn't nullable returns None
+                };
+
+                let size = match column.dbtype.get_fixed_length() {
+                    Some(l) => l as usize,
+                    None => {
+                        let l = data_len[variable_length_offset];
+                        variable_length_offset += 1;
+                        l as usize
+                    },
+                };
+
+                let bytes = raw_key[key_offset..key_offset + size]
+                    .to_vec()
+                    .into_boxed_slice();
+
+                debug!("record read: {:?}, {:?}", column.dbtype, bytes);
+                key_offset += size;
+
+                (bytes, is_null)
+            }).collect();
+
+        result
+    }
+
+    /// Returns length of data section in specified row.
+    pub fn read_data_length(&self, row: &[u8]) -> Vec<u64> {
+        let variable_column_count = self
+            .columns
+            .iter()
+            .filter(|column| column.dbtype.is_variable_length())
+            .count();
+
+        (0..variable_column_count)
+            .map(|i| {
+                let o = row.len() - variable_column_count * 8 + i * 8;
+                byteutils::read_udbinteger(&row[o..o + 8])
+            }).collect()
+    }
+
+    /// Updates row with new values.
+    pub fn update_row(
+        &mut self,
+        old_row: &[u8],
+        new_val: &HashMap<usize, (Box<[u8]>, Option<bool>)>,
+    ) -> Result<bool, UpdateError> {
+        // take only first 8 bytes with row id from old row
+        let mut new_row: Vec<u8> = old_row[..8].to_vec();
+        debug!("ID is {:?}", &new_row);
+
+        let new_row_data =
+            self.read_data(old_row)
+                .into_iter()
+                .enumerate()
+                .map(|(idx, old_record)| {
+                    // if the column for this idx has new value returns it,
+                    // returns old value otherwise
+                    new_val.get(&idx).unwrap_or(&old_record).clone()
+                });
+
+        debug!(
+            "new_row_data is {:?}",
+            new_row_data.clone().collect::<Vec<_>>()
+        );
+
+        self.write_data_to_row(new_row_data, &mut new_row)?;
+
+        debug!(
+            "Updating row with old_val={:?}, new_val={:?}",
+            &old_row, &new_row
+        );
+
+        self.delete_row(old_row)
+            .and_then(move |_| self.insert_raw_row(new_row))?;
+
+        Ok(true)
+    }
+
     /// rowid is automatically added, and is not included as a specified column
-    pub fn insert_row<I>(&mut self, column_data: I) -> Result<(), UpdateError>
+    pub fn insert_new_row<I>(&mut self, column_data: I) -> Result<(), UpdateError>
     where
         I: ExactSizeIterator,
         I: Iterator<Item = (Box<[u8]>, Option<bool>)>,
@@ -101,6 +199,11 @@ impl Table {
         self.next_rowid += 1;
 
         Ok(())
+    }
+
+    /// Inserts a raw row into the table as is.
+    pub fn insert_raw_row(&mut self, raw_row: Vec<u8>) -> Result<bool, UpdateError> {
+        Ok(self.rows_set.insert(raw_row))
     }
 
     /// Writes column data into the new row as bytes. After column data writes
