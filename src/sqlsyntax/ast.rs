@@ -194,6 +194,12 @@ pub struct TruncateStatement {
     pub table: Table,
 }
 
+#[derive(Debug, Clone)]
+pub struct DropTableStatement {
+    /// Table for destruction.
+    pub table: Table,
+}
+
 #[derive(Debug)]
 pub enum ExplainStatement {
     Select(SelectStatement),
@@ -226,6 +232,7 @@ pub enum Statement {
     Select(SelectStatement),
     Insert(InsertStatement),
     Create(CreateStatement),
+    Drop(DropTableStatement),
     Delete(DeleteStatement),
     Truncate(TruncateStatement),
     Explain(ExplainStatement),

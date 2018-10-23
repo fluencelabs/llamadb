@@ -47,6 +47,7 @@ pub enum Token {
     Explain,
     Truncate,
     Set,
+    Drop,
 
     // Non-letter tokens
     Equal,
@@ -159,6 +160,7 @@ fn word_to_token(word: String) -> Token {
         "explain" => Explain,
         "truncate" => Truncate,
         "set" => Set,
+        "drop" => Drop,
         _ => Ident(word),
     }
 }

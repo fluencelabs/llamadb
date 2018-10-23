@@ -39,6 +39,7 @@ pub struct TempDb {
 
 pub enum ExecuteStatementResponse<'a> {
     Created,
+    Dropped,
     Inserted(u64),
     Select {
         column_names: Box<[String]>,
@@ -217,6 +218,7 @@ impl TempDb {
             ast::Statement::Create(create_stmt) => match create_stmt {
                 ast::CreateStatement::Table(s) => self.create_table(s),
             },
+            ast::Statement::Drop(drop_stmt) => self.drop_table(drop_stmt),
             ast::Statement::Insert(insert_stmt) => self.insert_into(insert_stmt),
             ast::Statement::Select(select_stmt) => self.select(select_stmt),
             ast::Statement::Delete(delete_stmt) => self.delete(delete_stmt),
@@ -228,9 +230,7 @@ impl TempDb {
 
     fn create_table(&mut self, stmt: ast::CreateTableStatement) -> ExecuteStatementResult {
         if stmt.table.database_name.is_some() {
-            return Err(ExecuteError::new(
-                "Creating several databases is not supported.",
-            ));
+            return Err(ExecuteError::new("Several databases is not supported."));
         }
 
         let table_name = Identifier::new(&stmt.table.table_name)
@@ -279,6 +279,33 @@ impl TempDb {
         })?;
 
         Ok(ExecuteStatementResponse::Created)
+    }
+
+    fn drop_table(&mut self, stmt: ast::DropTableStatement) -> ExecuteStatementResult {
+        if stmt.table.database_name.is_some() {
+            return Err(ExecuteError::new("Several databases is not supported."));
+        }
+
+        let table_name = Identifier::new(&stmt.table.table_name).ok_or(
+            ExecuteError::from_string(format!("Bad table name: {}", &stmt.table.table_name)),
+        )?;
+
+        let table_idx = self
+            .tables
+            .iter()
+            .enumerate()
+            .find(|(_, table)| table.name == table_name)
+            .map(|(idx, _)| idx);
+
+        if let Some(idx) = table_idx {
+            self.tables.remove(idx); // do remove table
+            Ok(ExecuteStatementResponse::Dropped)
+        } else {
+            Err(ExecuteError::from_string(format!(
+                "Table with name={} does not exist",
+                table_name
+            )))
+        }
     }
 
     fn insert_into(&mut self, stmt: ast::InsertStatement) -> ExecuteStatementResult {
@@ -841,6 +868,27 @@ mod test {
         };
 
         assert_eq!(row_in_table(db, "Users").unwrap(), 0);
+    }
+
+    #[test]
+    fn drop_test() {
+        let db = &mut TempDb::new();
+        create_table(db, "Users").unwrap();
+        fill_table(db, "Users").unwrap();
+
+        assert_eq!(row_in_table(db, "Users").unwrap(), 3);
+
+        match db.do_query("drop table Users;").unwrap() {
+            ExecuteStatementResponse::Dropped => true,
+            _ => panic!("Expected Drop result"),
+        };
+
+        match db.do_query("select * from Users") {
+            Ok(_) => panic!("Expected error result for this statement"),
+            Err(ExecuteError { message }) => {
+                assert_eq!(message.clone(), "table does not exist: users")
+            },
+        };
     }
 
     #[test]

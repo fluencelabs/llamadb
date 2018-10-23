@@ -408,6 +408,16 @@ impl Rule for TruncateStatement {
     }
 }
 
+impl Rule for DropTableStatement {
+    type Output = DropTableStatement;
+    fn parse(tokens: &mut Tokens) -> RuleResult<DropTableStatement> {
+        tokens.pop_token_expecting(&Token::Drop, "DROP")?;
+        tokens.pop_token_expecting(&Token::Table, "TABLE")?;
+        let table = try_notfirst(Table::parse(tokens))?;
+        Ok(DropTableStatement { table })
+    }
+}
+
 impl Rule for SelectStatement {
     type Output = SelectStatement;
     fn parse(tokens: &mut Tokens) -> RuleResult<SelectStatement> {
@@ -754,6 +764,8 @@ impl Rule for Statement {
             Ok(Statement::Insert(insert))
         } else if let Some(create) = CreateStatement::parse_lookahead(tokens)? {
             Ok(Statement::Create(create))
+        } else if let Some(drop) = DropTableStatement::parse_lookahead(tokens)? {
+            Ok(Statement::Drop(drop))
         } else if let Some(delete) = DeleteStatement::parse_lookahead(tokens)? {
             Ok(Statement::Delete(delete))
         } else if let Some(truncate) = TruncateStatement::parse_lookahead(tokens)? {
