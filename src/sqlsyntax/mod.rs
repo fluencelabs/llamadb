@@ -123,7 +123,7 @@ mod test {
         let create_table = parse(
             "CREATE TABLE test (
             foo     INT CONSTRAINT pk PRIMARY KEY,
-            bar     VARCHAR(256),
+            bar     TEXT,
             data    BYTE[32] NULL UNIQUE
         );",
         );
@@ -152,8 +152,8 @@ mod test {
                         },
                         CreateTableColumn {
                             column_name: "bar".to_string(),
-                            type_name: "VARCHAR".to_string(),
-                            type_size: Some("256".to_string()),
+                            type_name: "TEXT".to_string(),
+                            type_size: None,
                             type_array_size: None,
                             constraints: Vec::new()
                         },

@@ -108,7 +108,7 @@ impl ColumnValueOps for Variant {
                 let f = byteutils::read_dbfloat(&bytes);
                 Ok(Variant::Float(F64NoNaN::new(f)?))
             },
-            DbType::String => {
+            DbType::Text => {
                 let len = bytes.len();
                 if len > 0 && bytes[len - 1] == 0 {
                     let s = String::from_utf8_lossy(&bytes[0..len - 1]);
@@ -129,7 +129,7 @@ impl ColumnValueOps for Variant {
                 Err(format!("{:?} cannot be converted to bytes", dbtype))
             },
             (Variant::Bytes(v), DbType::ByteDynamic) => Ok(v.into_boxed_slice()),
-            (Variant::StringLiteral(s), DbType::String) => {
+            (Variant::StringLiteral(s), DbType::Text) => {
                 Ok((s + "\0").into_bytes().into_boxed_slice())
             },
             (
@@ -167,7 +167,7 @@ impl ColumnValueOps for Variant {
         match self {
             &Variant::Null => DbType::Null,
             &Variant::Bytes(ref bytes) => DbType::ByteFixed(bytes.len() as u64),
-            &Variant::StringLiteral(..) => DbType::String,
+            &Variant::StringLiteral(..) => DbType::Text,
             &Variant::SignedInteger(..) => DbType::Integer {
                 signed: true,
                 bytes: 8,
@@ -263,11 +263,11 @@ impl ColumnValueOps for Variant {
         match (self, dbtype) {
             (e @ Variant::Null, DbType::Null) |
             (e @ Variant::Bytes(_), DbType::ByteDynamic) |
-            (e @ Variant::StringLiteral(_), DbType::String) |
+            (e @ Variant::StringLiteral(_), DbType::Text) |
             (e @ Variant::SignedInteger(_), DbType::Integer { signed: true, .. }) |
             (e @ Variant::UnsignedInteger(_), DbType::Integer { signed: false, .. }) |
             (e @ Variant::Float(_), DbType::F64) => Ok(e.clone()),
-            (e, DbType::String) => {
+            (e, DbType::Text) => {
                 // every variant can be converted to a string
                 Ok(Variant::StringLiteral(e.to_string()))
             },
@@ -312,7 +312,7 @@ impl ColumnValueOps for Variant {
                 Variant::StringLiteral(format!("{}{}", l, r))
             },
             (e @ &Variant::StringLiteral(_), rhs) => {
-                let it = rhs.clone().cast(DbType::String)?;
+                let it = rhs.clone().cast(DbType::Text)?;
                 e.concat(&it)?
             },
             (e, _) => e.clone(),

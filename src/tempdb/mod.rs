@@ -671,7 +671,7 @@ mod test {
 
     fn create_table<'a>(db: &'a mut TempDb, t_name: &str) -> ExecuteStatementResult<'a> {
         db.do_query(&format!(
-            "create table {}(id int, name varchar(128), age int);",
+            "create table {}(id int, name text, age int);",
             t_name
         ))
     }
