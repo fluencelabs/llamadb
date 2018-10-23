@@ -39,6 +39,7 @@ pub struct TempDb {
 
 pub enum ExecuteStatementResponse<'a> {
     Created,
+    Dropped,
     Inserted(u64),
     Select {
         column_names: Box<[String]>,
@@ -217,6 +218,7 @@ impl TempDb {
             ast::Statement::Create(create_stmt) => match create_stmt {
                 ast::CreateStatement::Table(s) => self.create_table(s),
             },
+            ast::Statement::Drop(drop_stmt) => self.drop_table(drop_stmt),
             ast::Statement::Insert(insert_stmt) => self.insert_into(insert_stmt),
             ast::Statement::Select(select_stmt) => self.select(select_stmt),
             ast::Statement::Delete(delete_stmt) => self.delete(delete_stmt),
@@ -228,9 +230,7 @@ impl TempDb {
 
     fn create_table(&mut self, stmt: ast::CreateTableStatement) -> ExecuteStatementResult {
         if stmt.table.database_name.is_some() {
-            return Err(ExecuteError::new(
-                "Creating several databases is not supported.",
-            ));
+            return Err(ExecuteError::new("Several databases is not supported."));
         }
 
         let table_name = Identifier::new(&stmt.table.table_name)
@@ -279,6 +279,33 @@ impl TempDb {
         })?;
 
         Ok(ExecuteStatementResponse::Created)
+    }
+
+    fn drop_table(&mut self, stmt: ast::DropTableStatement) -> ExecuteStatementResult {
+        if stmt.table.database_name.is_some() {
+            return Err(ExecuteError::new("Several databases is not supported."));
+        }
+
+        let table_name = Identifier::new(&stmt.table.table_name).ok_or(
+            ExecuteError::from_string(format!("Bad table name: {}", &stmt.table.table_name)),
+        )?;
+
+        let table_idx = self
+            .tables
+            .iter()
+            .enumerate()
+            .find(|(_, table)| table.name == table_name)
+            .map(|(idx, _)| idx);
+
+        if let Some(idx) = table_idx {
+            self.tables.remove(idx); // do remove table
+            Ok(ExecuteStatementResponse::Dropped)
+        } else {
+            Err(ExecuteError::from_string(format!(
+                "Table with name={} does not exist",
+                table_name
+            )))
+        }
     }
 
     fn insert_into(&mut self, stmt: ast::InsertStatement) -> ExecuteStatementResult {
@@ -700,6 +727,80 @@ mod test {
         result
     }
 
+    fn row_to_string(row: Box<[Variant]>) -> String {
+        row.iter()
+            .map(|elem| elem.to_string())
+            .collect::<Vec<String>>()
+            .join(", ")
+    }
+
+    fn rows_to_strings<'a>(rows: Box<Iterator<Item = Box<[Variant]>> + 'a>) -> Vec<String> {
+        rows.into_iter().map(row_to_string).collect()
+    }
+
+    #[test]
+    fn select_test() {
+        let db = &mut TempDb::new();
+
+        create_table(db, "Users").unwrap();
+        fill_table(db, "Users").unwrap();
+
+        match db.do_query("select * from Users;").unwrap() {
+            ExecuteStatementResponse::Select { column_names, rows } => {
+                assert_eq!(column_names.to_vec(), vec!["id", "name", "age"]);
+                assert_eq!(
+                    rows_to_strings(rows),
+                    vec![
+                        "1, Isaac Asimov, 50",
+                        "2, Stanislaw Lem, 40",
+                        "3, Liu Cixin, 30"
+                    ]
+                );
+            },
+            _ => panic!("Expected Select result"),
+        };
+
+        match db.do_query("select min(id) as min, name from Users where age >= 30 and name <> 'Roger Zelazny'").unwrap() {
+            ExecuteStatementResponse::Select { column_names, rows } => {
+                assert_eq!(column_names.to_vec(), vec!["min", "name"]);
+                assert_eq!(
+                    rows_to_strings(rows),
+                    vec!["1, Isaac Asimov"]
+                );
+            },
+            _ => panic!("Expected Select result"),
+        };
+
+        match db
+            .do_query("select avg(age) as avg, name from Users group by age having id > 2")
+            .unwrap()
+        {
+            ExecuteStatementResponse::Select { column_names, rows } => {
+                assert_eq!(column_names.to_vec(), vec!["avg", "name"]);
+                assert_eq!(rows_to_strings(rows), vec!["30, Liu Cixin"]);
+            },
+            _ => panic!("Expected Select result"),
+        };
+
+        match db
+            .do_query(
+                "select min(age) as min, max(age) as max, count(age) as count, sum(age) as \
+                 sum, avg(age) as avg FROM Users",
+            ).unwrap()
+        {
+            ExecuteStatementResponse::Select { column_names, rows } => {
+                assert_eq!(
+                    column_names.to_vec(),
+                    vec!["min", "max", "count", "sum", "avg"]
+                );
+                assert_eq!(rows_to_strings(rows), vec!["30, 50, 3, 120, 40"]);
+            },
+            _ => panic!("Expected Select result"),
+        };
+
+        // todo add more test cases, including join, sub queries and so on
+    }
+
     #[test]
     fn delete_test() {
         let db = &mut TempDb::new();
@@ -767,6 +868,27 @@ mod test {
         };
 
         assert_eq!(row_in_table(db, "Users").unwrap(), 0);
+    }
+
+    #[test]
+    fn drop_test() {
+        let db = &mut TempDb::new();
+        create_table(db, "Users").unwrap();
+        fill_table(db, "Users").unwrap();
+
+        assert_eq!(row_in_table(db, "Users").unwrap(), 3);
+
+        match db.do_query("drop table Users;").unwrap() {
+            ExecuteStatementResponse::Dropped => true,
+            _ => panic!("Expected Drop result"),
+        };
+
+        match db.do_query("select * from Users") {
+            Ok(_) => panic!("Expected error result for this statement"),
+            Err(ExecuteError { message }) => {
+                assert_eq!(message.clone(), "table does not exist: users")
+            },
+        };
     }
 
     #[test]

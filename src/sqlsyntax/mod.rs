@@ -94,6 +94,7 @@ mod test {
     use sqlsyntax::ast::CreateTableColumnConstraintType::Unique;
     use sqlsyntax::ast::CreateTableStatement;
     use sqlsyntax::ast::DeleteStatement;
+    use sqlsyntax::ast::DropTableStatement;
     use sqlsyntax::ast::ExplainStatement::Select;
     use sqlsyntax::ast::Expression::Ident;
     use sqlsyntax::ast::Expression::IdentMember;
@@ -580,6 +581,22 @@ mod test {
                 );
             },
             st => panic!("Expected truncate statement but actually={:?}", st),
+        }
+    }
+
+    #[test]
+    fn drop_parsing_test() {
+        match parse("DROP TABLE users;").unwrap() {
+            Statement::Drop(DropTableStatement { table }) => {
+                assert_eq!(
+                    table,
+                    Table {
+                        database_name: None,
+                        table_name: "users".to_string()
+                    }
+                );
+            },
+            st => panic!("Expected drop statement but actually={:?}", st),
         }
     }
 

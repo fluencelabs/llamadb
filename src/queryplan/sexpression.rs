@@ -89,7 +89,7 @@ where
         macro_rules! write_indent {
             ($i:expr) => {
                 for _ in 0..$i {
-                    try!(write!(f, "  "));
+                    write!(f, "  ")?;
                 }
             };
         }
