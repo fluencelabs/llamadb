@@ -20,8 +20,8 @@ pub enum DbType {
     Integer { signed: bool, bytes: u8 },
     /// f64: floating point number, double precision
     F64,
-    /// string: utf-8 string
-    String,
+    /// text: utf-8 string
+    Text,
 }
 
 impl DbType {
@@ -34,7 +34,7 @@ impl DbType {
             ("byte", Some(None)) => Some(DbType::ByteDynamic),
             ("byte", Some(Some(v))) => Some(DbType::ByteFixed(v)),
             ("f64", None) | ("double", None) => Some(DbType::F64),
-            ("string", None) | ("varchar", None) => Some(DbType::String),
+            ("text", None) | ("string", None) | ("varchar", None) => Some(DbType::Text),
             ("int", None) | ("integer", None) => Some(DbType::Integer {
                 signed: true,
                 bytes: 4,
@@ -58,11 +58,11 @@ impl DbType {
                     match ident.chars().nth(0).unwrap() {
                         'u' => Some(DbType::Integer {
                             signed: false,
-                            bytes: bytes,
+                            bytes,
                         }),
                         'i' => Some(DbType::Integer {
                             signed: true,
-                            bytes: bytes,
+                            bytes,
                         }),
                         _ => None,
                     }
@@ -106,7 +106,7 @@ impl DbType {
             // Positive zero
             &DbType::F64 => Borrowed(F64_ZERO),
             // Empty string
-            &DbType::String => Borrowed(ZERO),
+            &DbType::Text => Borrowed(ZERO),
         }
     }
 
@@ -117,7 +117,7 @@ impl DbType {
             &DbType::ByteFixed(bytes) => length == bytes,
             &DbType::Integer { bytes, .. } => length == bytes as u64,
             &DbType::F64 => length == 8,
-            &DbType::String => true,
+            &DbType::Text => true,
         }
     }
 
@@ -128,7 +128,7 @@ impl DbType {
             &DbType::ByteFixed(n) => Some(n),
             &DbType::Integer { bytes, .. } => Some(bytes as u64),
             &DbType::F64 => Some(8),
-            &DbType::String => None,
+            &DbType::Text => None,
         }
     }
 

@@ -25,9 +25,9 @@ The length is stored as a 64-bit integer.
 
 ```sql
 CREATE TABLE person(
-    name        STRING,     -- backed by byte[]
+    name        TEXT,     -- backed by byte[]
     age         U8,
-    description STRING      -- backed by byte[]
+    description STRING    -- STRING is alias for TEXT, backed by byte[]
 );
 ```
 
