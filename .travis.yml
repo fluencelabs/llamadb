@@ -5,7 +5,7 @@ rust: nightly
 allow_failures:
   - rust: nightly
 
-#cache: cargo
+cache: cargo
 
 before_script:
   - rustup component add rustfmt-preview --toolchain nightly
