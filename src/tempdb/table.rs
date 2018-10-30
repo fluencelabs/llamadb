@@ -120,7 +120,8 @@ impl Table {
                 key_offset += size;
 
                 (bytes, is_null)
-            }).collect();
+            })
+            .collect();
 
         result
     }
@@ -137,7 +138,8 @@ impl Table {
             .map(|i| {
                 let o = row.len() - variable_column_count * 8 + i * 8;
                 byteutils::read_udbinteger(&row[o..o + 8])
-            }).collect()
+            })
+            .collect()
     }
 
     /// Updates row with new values.

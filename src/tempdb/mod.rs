@@ -178,7 +178,8 @@ impl<'a> Group for ScanGroup<'a> {
                         key_offset += size;
                         value
                     }
-                }).collect();
+                })
+                .collect();
 
             v.into()
         }))
@@ -269,7 +270,8 @@ impl TempDb {
                     dbtype,
                     nullable,
                 })
-            }).collect::<Result<Vec<Column>, ExecuteError>>()?;
+            })
+            .collect::<Result<Vec<Column>, ExecuteError>>()?;
 
         self.add_table(Table {
             name: table_name,
@@ -338,7 +340,8 @@ impl TempDb {
                                 column_name
                             ))),
                         }
-                    }).collect::<Result<Vec<u32>, ExecuteError>>()?,
+                    })
+                    .collect::<Result<Vec<u32>, ExecuteError>>()?,
 
                 // No column names are listed; map all columns
                 None => (0..table.get_column_count()).collect(),
@@ -396,7 +399,8 @@ impl TempDb {
                                         ))
                                     },
                                 }
-                            }).collect::<Result<Vec<_>, ExecuteError>>()
+                            })
+                            .collect::<Result<Vec<_>, ExecuteError>>()
                     }?;
 
                     let mut table = self.get_table_mut(&table_name)?;
@@ -555,7 +559,8 @@ impl TempDb {
 
                         Ok((col_idx?, new_value))
                     },
-                ).collect::<Result<HashMap<usize, ast::Expression>, ExecuteError>>()?
+                )
+                .collect::<Result<HashMap<usize, ast::Expression>, ExecuteError>>()?
         };
 
         trace!("col_idx_to_ast_idx: {:?}", col_idx_to_ast_idx);
@@ -575,7 +580,8 @@ impl TempDb {
                 let is_null = variant_to_data(value, dbtype, nullable, &mut buf)?;
 
                 Ok((col_offset, (buf.into_boxed_slice(), is_null)))
-            }).collect::<Result<HashMap<usize, _>, ExecuteError>>()?;
+            })
+            .collect::<Result<HashMap<usize, _>, ExecuteError>>()?;
 
         trace!("New values for update {:?}", new_values_for_update);
 
@@ -786,7 +792,8 @@ mod test {
             .do_query(
                 "select min(age) as min, max(age) as max, count(age) as count, sum(age) as \
                  sum, avg(age) as avg FROM Users",
-            ).unwrap()
+            )
+            .unwrap()
         {
             ExecuteStatementResponse::Select { column_names, rows } => {
                 assert_eq!(
@@ -844,7 +851,8 @@ mod test {
             .do_query(
                 "delete from Users as u1 where u1.id = 1 or u1.age = \
                  (select u2.age from Users as u2 where u2.id = 2);",
-            ).unwrap()
+            )
+            .unwrap()
         {
             ExecuteStatementResponse::Deleted(number_of_rows) => assert_eq!(number_of_rows, 3),
             _ => panic!("Expected Deleted result"),
@@ -909,7 +917,8 @@ mod test {
             .do_query(
                 "update Users as u set u.name = 'unknown', u.age = -1 \
                  where u.name = (select u3.name from Users u3 where u3.id = 1);",
-            ).unwrap()
+            )
+            .unwrap()
         {
             ExecuteStatementResponse::Updated(number_of_rows) => assert_eq!(number_of_rows, 1),
             _ => panic!("Expected Update result"),

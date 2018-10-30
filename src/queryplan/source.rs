@@ -127,5 +127,6 @@ where
                 .enumerate()
                 .filter_map(|(i, ident)| if ident == name { Some(i as u32) } else { None })
                 .map(move |offset| SourceIdAndOffset(source_id, offset))
-        }).collect()
+        })
+        .collect()
 }

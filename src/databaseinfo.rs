@@ -29,7 +29,8 @@ pub trait TableInfo {
             .map(|i| {
                 let column = self.find_column_by_offset(i).unwrap();
                 column.get_name().clone()
-            }).collect()
+            })
+            .collect()
     }
 }
 
