@@ -77,14 +77,15 @@ struct Min<ColumnValue> {
 
 impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Min<ColumnValue> {
     fn feed(&mut self, value: ColumnValue) -> Result<(), String> {
-        let set = !value.is_null() && if let Some(r) = self.value.as_ref() {
-            match value.compare(r)? {
-                Some(-1) => true,
-                _ => false,
-            }
-        } else {
-            true
-        };
+        let set = !value.is_null() &&
+            if let Some(r) = self.value.as_ref() {
+                match value.compare(r)? {
+                    Some(-1) => true,
+                    _ => false,
+                }
+            } else {
+                true
+            };
 
         if set {
             self.value = Some(value);
@@ -103,14 +104,15 @@ struct Max<ColumnValue> {
 
 impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Max<ColumnValue> {
     fn feed(&mut self, value: ColumnValue) -> Result<(), String> {
-        let set = !value.is_null() && if let Some(r) = self.value.as_ref() {
-            match value.compare(r)? {
-                Some(1) => true,
-                _ => false,
-            }
-        } else {
-            true
-        };
+        let set = !value.is_null() &&
+            if let Some(r) = self.value.as_ref() {
+                match value.compare(r)? {
+                    Some(1) => true,
+                    _ => false,
+                }
+            } else {
+                true
+            };
 
         if set {
             self.value = Some(value);

@@ -392,7 +392,8 @@ where
                 .map(|column_offset| SExpression::ColumnField {
                     source_id,
                     column_offset,
-                }).collect(),
+                })
+                .collect(),
         })
     }
 }
@@ -405,11 +406,10 @@ where
     fn new_source_id(&mut self) -> u32 {
         let old_source_id = *self.next_source_id;
 
-        assert!(
-            self.source_id_to_query_id
-                .insert(old_source_id, self.query_id)
-                .is_none()
-        );
+        assert!(self
+            .source_id_to_query_id
+            .insert(old_source_id, self.query_id)
+            .is_none());
 
         *self.next_source_id += 1;
         old_source_id
@@ -427,16 +427,14 @@ where
         } else {
             let old_source_id = *self.next_source_id;
 
-            assert!(
-                self.source_id_to_query_id
-                    .insert(old_source_id, aggregated_query_id)
-                    .is_none()
-            );
-            assert!(
-                self.query_to_aggregated_source_id
-                    .insert(aggregated_query_id, old_source_id)
-                    .is_none()
-            );
+            assert!(self
+                .source_id_to_query_id
+                .insert(old_source_id, aggregated_query_id)
+                .is_none());
+            assert!(self
+                .query_to_aggregated_source_id
+                .insert(aggregated_query_id, old_source_id)
+                .is_none());
 
             *self.next_source_id += 1;
             old_source_id
@@ -510,7 +508,8 @@ where
                                 column_offset,
                             }
                         })
-                    }).collect(),
+                    })
+                    .collect(),
             };
 
             let yield_in_fn = from_where.evaluate(yield_every_column);
@@ -530,7 +529,8 @@ where
                         c += table.out_column_names.len() as u32;
 
                         (table.source_id, m)
-                    }).collect()
+                    })
+                    .collect()
             };
 
             let mut yield_out_fn = SExpression::Yield {
@@ -673,7 +673,8 @@ where
             .into_iter()
             .map(|ast_table_or_subquery| {
                 self.ast_table_or_subquery_to(ast_table_or_subquery, scope, groups_info)
-            }).collect::<Result<_, _>>()?;
+            })
+            .collect::<Result<_, _>>()?;
 
         let (tables, table_aliases): (Vec<_>, _) = a.into_iter().unzip();
 
@@ -752,7 +753,8 @@ where
                         })
                     },
                 }
-            }).collect::<Result<_, _>>()?;
+            })
+            .collect::<Result<_, _>>()?;
 
         let where_expr = if let Some(where_expr) = where_expr {
             Some(self.ast_expression_to_sexpression(where_expr, &new_scope, groups_info)?)
