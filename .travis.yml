@@ -1,7 +1,9 @@
 language: rust
 
-rust:
-  - nightly
+rust: nightly
+
+allow_failures:
+ - rust: nightly
 
 cache: cargo
 
