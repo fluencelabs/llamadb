@@ -130,7 +130,7 @@ where
                 }
 
                 Ok(())
-            }
+            },
             &SExpression::LeftJoin {
                 source_id,
                 ref yield_in_fn,
@@ -174,7 +174,7 @@ where
                 } else {
                     Ok(())
                 }
-            }
+            },
             &SExpression::Map {
                 source_id,
                 ref yield_in_fn,
@@ -242,7 +242,7 @@ where
                 }
 
                 Ok(())
-            }
+            },
             &SExpression::Yield { ref fields } => {
                 let columns: Result<Vec<_>, _> = fields
                     .iter()
@@ -253,12 +253,12 @@ where
                 match src.source_type {
                     SourceType::RawRow(_, raw_row) => {
                         raw_row_cb(raw_row)?;
-                    }
-                    _ => {} // do nothing
+                    },
+                    _ => {}, // do nothing
                 }
 
                 columns.map(|columns| row_cb(&columns))?
-            }
+            },
             &SExpression::If {
                 ref chains,
                 ref else_,
@@ -276,13 +276,13 @@ where
                 } else {
                     Ok(())
                 }
-            }
-            &SExpression::ColumnField { .. }
-            | &SExpression::BinaryOp { .. }
-            | &SExpression::UnaryOp { .. }
-            | &SExpression::AggregateOp { .. }
-            | &SExpression::CountAll { .. }
-            | &SExpression::Value(..) => Err(ExecuteError::from_string(format!(
+            },
+            &SExpression::ColumnField { .. } |
+            &SExpression::BinaryOp { .. } |
+            &SExpression::UnaryOp { .. } |
+            &SExpression::AggregateOp { .. } |
+            &SExpression::CountAll { .. } |
+            &SExpression::Value(..) => Err(ExecuteError::from_string(format!(
                 "encountered expression that cannot yield rows"
             ))),
         }
@@ -315,9 +315,9 @@ where
                                 source_id
                             ))),
                         }
-                    }
+                    },
                 }
-            }
+            },
             &SExpression::BinaryOp {
                 op,
                 ref lhs,
@@ -330,14 +330,14 @@ where
                     BinaryOp::Equal => Ok(l.equals(&r).map_err(ExecuteError::from_string)?),
                     BinaryOp::NotEqual => {
                         Ok(l.not_equals(&r).map_err(ExecuteError::from_string)?)
-                    }
+                    },
                     BinaryOp::LessThan => Ok(l.less_than(&r).map_err(ExecuteError::from_string)?),
                     BinaryOp::LessThanOrEqual => Ok(l
                         .less_than_or_equal(&r)
                         .map_err(ExecuteError::from_string)?),
                     BinaryOp::GreaterThan => {
                         Ok(l.greater_than(&r).map_err(ExecuteError::from_string)?)
-                    }
+                    },
                     BinaryOp::GreaterThanOrEqual => Ok(l
                         .greater_than_or_equal(&r)
                         .map_err(ExecuteError::from_string)?),
@@ -350,14 +350,14 @@ where
                     BinaryOp::Divide => Ok(l.div(&r).map_err(ExecuteError::from_string)?),
                     op => Err(ExecuteError::from(NotImplemented(op.to_string()))),
                 }
-            }
+            },
             &SExpression::UnaryOp { op, ref expr } => {
                 let e = self.resolve_value(expr, source)?;
 
                 Ok(match op {
                     UnaryOp::Negate => e.negate(),
                 })
-            }
+            },
             &SExpression::AggregateOp {
                 op,
                 source_id,
@@ -380,25 +380,25 @@ where
                         }
 
                         Ok(op_functor.finish())
-                    }
+                    },
                     None => Err(ExecuteError::from_string(format!(
                         "AggregateOp: source id is not a valid group: {}",
                         source_id
                     ))),
                 }
-            }
+            },
             &SExpression::CountAll { source_id } => {
                 match source.and_then(|s| s.find_group_from_source_id(source_id)) {
                     Some(group) => {
                         let count = group.count();
                         Ok(ColumnValueOps::from_u64(count))
-                    }
+                    },
                     None => Err(ExecuteError::from_string(format!(
                         "CountAll: source id is not a valid group: {}",
                         source_id
                     ))),
                 }
-            }
+            },
             &SExpression::Map {
                 source_id,
                 ref yield_in_fn,
@@ -438,12 +438,12 @@ where
                 } else {
                     Err(ExecuteError::new("subquery must yield exactly one row"))
                 }
-            }
-            &SExpression::Scan { .. }
-            | &SExpression::LeftJoin { .. }
-            | &SExpression::TempGroupBy { .. }
-            | &SExpression::Yield { .. }
-            | &SExpression::If { .. } => Err(ExecuteError::from_string(format!(
+            },
+            &SExpression::Scan { .. } |
+            &SExpression::LeftJoin { .. } |
+            &SExpression::TempGroupBy { .. } |
+            &SExpression::Yield { .. } |
+            &SExpression::If { .. } => Err(ExecuteError::from_string(format!(
                 "encounted expression that cannot resolve to a single value"
             ))),
         }

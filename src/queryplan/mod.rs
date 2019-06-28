@@ -44,13 +44,13 @@ impl fmt::Display for QueryPlanCompileError {
             &UnknownFunctionName(ref s) => write!(f, "unknown function name: {}", s),
             &AggregateFunctionRequiresOneArgument => {
                 write!(f, "aggregate function requires exactly one argument")
-            }
+            },
             &AggregateFunctionHasNoQueryToAggregate => {
                 write!(f, "aggregate function contains no query to aggregate")
-            }
+            },
             &AggregateAllMustBeCount(ref name) => {
                 write!(f, "aggregate (*) function must be `count` (found {})", name)
-            }
+            },
             &NotImplemented(ref name) => write!(f, "{} in not implemented", name),
         }
     }
@@ -352,7 +352,7 @@ where
                     });
 
                 outer_table.into_sexpr(s)
-            }
+            },
         }
     }
 }
@@ -585,7 +585,7 @@ where
             ast::From::Cross(v) => self.from_where_cross(v, where_expr, scope, groups_info),
             ast::From::Join { table, joins } => {
                 self.from_where_join(table, joins, where_expr, scope, groups_info)
-            }
+            },
         }
     }
 
@@ -630,7 +630,7 @@ where
                 };
 
                 Ok(((s, t), alias_identifier))
-            }
+            },
             ast::TableOrSubquery::Table { table, alias } => {
                 let table_name_identifier = new_identifier(&table.table_name)?;
                 let table = match self.db.find_table_by_name(&table_name_identifier) {
@@ -639,7 +639,7 @@ where
                         return Err(QueryPlanCompileError::TableDoesNotExist(
                             table_name_identifier,
                         ));
-                    }
+                    },
                 };
 
                 let alias_identifier = if let Some(alias) = alias {
@@ -658,7 +658,7 @@ where
                 let t = FromWhereTableOrSubquery::Table { source_id, table };
 
                 Ok(((s, t), alias_identifier))
-            }
+            },
         }
     }
 
@@ -727,7 +727,7 @@ where
                             table: fromwhere_table,
                             on,
                         })
-                    }
+                    },
                     ast::JoinOperator::Left => {
                         let source_id = self.new_source_id();
 
@@ -751,7 +751,7 @@ where
                                 .map(|_| ColumnValueOpsExt::null())
                                 .collect(),
                         })
-                    }
+                    },
                 }
             })
             .collect::<Result<_, _>>()?;
@@ -811,7 +811,7 @@ where
                                 )
                             })
                     }));
-                }
+                },
                 ast::SelectColumn::Expr { expr, alias } => {
                     let column_name = if let Some(alias) = alias {
                         new_identifier(&alias)?
@@ -827,7 +827,7 @@ where
 
                     let e = self.ast_expression_to_sexpression(expr, &scope, groups_info)?;
                     a.push((column_name, e));
-                }
+                },
             }
         }
 
@@ -850,12 +850,12 @@ where
                     GetColumnOffsetResult::One(v) => v,
                     GetColumnOffsetResult::None => {
                         return Err(QueryPlanCompileError::ColumnDoesNotExist(column_identifier));
-                    }
+                    },
                     GetColumnOffsetResult::Ambiguous(..) => {
                         return Err(QueryPlanCompileError::AmbiguousColumnName(
                             column_identifier,
                         ));
-                    }
+                    },
                 };
 
                 groups_info.add_query_id(self.get_query_id_from_source_id(source_id));
@@ -864,7 +864,7 @@ where
                     source_id,
                     column_offset,
                 })
-            }
+            },
             ast::Expression::IdentMember(s1, s2) => {
                 let table_identifier = new_identifier(&s1)?;
                 let column_identifier = new_identifier(&s2)?;
@@ -875,12 +875,12 @@ where
                     GetColumnOffsetResult::One(v) => v,
                     GetColumnOffsetResult::None => {
                         return Err(QueryPlanCompileError::ColumnDoesNotExist(column_identifier));
-                    }
+                    },
                     GetColumnOffsetResult::Ambiguous(..) => {
                         return Err(QueryPlanCompileError::AmbiguousColumnName(
                             column_identifier,
                         ));
-                    }
+                    },
                 };
 
                 groups_info.add_query_id(self.get_query_id_from_source_id(source_id));
@@ -889,7 +889,7 @@ where
                     source_id,
                     column_offset,
                 })
-            }
+            },
             ast::Expression::UnaryOp { expr, op } => {
                 let e = self.ast_expression_to_sexpression(*expr, scope, groups_info)?;
 
@@ -897,7 +897,7 @@ where
                     op: ast_unaryop_to_sexpression_unaryop(op),
                     expr: Box::new(e),
                 })
-            }
+            },
             ast::Expression::BinaryOp { lhs, rhs, op } => {
                 let l = self.ast_expression_to_sexpression(*lhs, scope, groups_info)?;
                 let r = self.ast_expression_to_sexpression(*rhs, scope, groups_info)?;
@@ -907,13 +907,13 @@ where
                     lhs: Box::new(l),
                     rhs: Box::new(r),
                 })
-            }
+            },
             ast::Expression::StringLiteral(s) => {
                 match DB::ColumnValue::from_string_literal(s.into()) {
                     Ok(value) => Ok(SExpression::Value(value)),
                     Err(s) => Err(QueryPlanCompileError::BadStringLiteral(s.into_owned())),
                 }
-            }
+            },
             ast::Expression::Number(s) => match DB::ColumnValue::from_number_literal(s.into()) {
                 Ok(value) => Ok(SExpression::Value(value)),
                 Err(s) => Err(QueryPlanCompileError::BadNumberLiteral(s.into_owned())),
@@ -941,7 +941,7 @@ where
                         column_offset: 0,
                     }),
                 })
-            }
+            },
             ast::Expression::FunctionCall { name, arguments } => {
                 let ident = new_identifier(&name)?;
 
@@ -987,7 +987,7 @@ where
                     "max" => aggregate!(AggregateOp::Max),
                     _ => Err(QueryPlanCompileError::UnknownFunctionName(ident)),
                 }
-            }
+            },
             ast::Expression::FunctionCallAggregateAll { name } => {
                 let ident = new_identifier(&name)?;
 
@@ -997,10 +997,10 @@ where
                         let source_id = self.new_aggregated_source_id(query_id);
 
                         Ok(SExpression::CountAll { source_id })
-                    }
+                    },
                     _ => Err(QueryPlanCompileError::AggregateAllMustBeCount(ident)),
                 }
-            }
+            },
         }
     }
 }
@@ -1027,10 +1027,10 @@ fn remap_columns_in_sexpression<'a, DB>(
                 *source_id = m.source_id;
                 *column_offset += m.column_offset;
             }
-        }
+        },
         _ => {
             iter_mut_expressions_in_expression(expr, |e| remap_columns_in_sexpression(e, mapping));
-        }
+        },
     }
 }
 
@@ -1045,7 +1045,7 @@ where
             ref mut yield_fn, ..
         } => {
             cb(yield_fn);
-        }
+        },
         &mut SExpression::Map {
             ref mut yield_in_fn,
             ref mut yield_out_fn,
@@ -1053,7 +1053,7 @@ where
         } => {
             cb(yield_in_fn);
             cb(yield_out_fn);
-        }
+        },
         &mut SExpression::TempGroupBy {
             ref mut yield_in_fn,
             ref mut group_by_values,
@@ -1065,12 +1065,12 @@ where
                 cb(v);
             }
             cb(yield_out_fn);
-        }
+        },
         &mut SExpression::Yield { ref mut fields } => {
             for v in fields {
                 cb(v);
             }
-        }
+        },
         &mut SExpression::If {
             ref mut chains,
             ref mut else_,
@@ -1082,7 +1082,7 @@ where
             if let Some(e) = else_.as_mut() {
                 cb(e);
             }
-        }
+        },
         &mut SExpression::BinaryOp {
             ref mut lhs,
             ref mut rhs,
@@ -1090,10 +1090,10 @@ where
         } => {
             cb(lhs);
             cb(rhs);
-        }
+        },
         &mut SExpression::AggregateOp { ref mut value, .. } => {
             cb(value);
-        }
+        },
         _ => (),
     }
 }

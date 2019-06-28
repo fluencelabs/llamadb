@@ -92,7 +92,7 @@ impl ColumnValueOps for Variant {
                 } else {
                     Ok(Variant::Bytes(bytes.into_owned()))
                 }
-            }
+            },
             DbType::Integer { signed, bytes: n } => {
                 if bytes.len() != n as usize {
                     Err(format!("{:?} cannot be converted to {:?}", bytes, dbtype))
@@ -103,11 +103,11 @@ impl ColumnValueOps for Variant {
                         Ok(Variant::UnsignedInteger(byteutils::read_udbinteger(&bytes)))
                     }
                 }
-            }
+            },
             DbType::F64 => {
                 let f = byteutils::read_dbfloat(&bytes);
                 Ok(Variant::Float(F64NoNaN::new(f)?))
-            }
+            },
             DbType::Text => {
                 let len = bytes.len();
                 if len > 0 && bytes[len - 1] == 0 {
@@ -116,7 +116,7 @@ impl ColumnValueOps for Variant {
                 } else {
                     Err(format!("{:?} cannot be converted to {:?}", bytes, dbtype))
                 }
-            }
+            },
         }
     }
 
@@ -127,11 +127,11 @@ impl ColumnValueOps for Variant {
             (Variant::Null, DbType::Null) => {
                 // NULL has no data.
                 Err(format!("{:?} cannot be converted to bytes", dbtype))
-            }
+            },
             (Variant::Bytes(v), DbType::ByteDynamic) => Ok(v.into_boxed_slice()),
             (Variant::StringLiteral(s), DbType::Text) => {
                 Ok((s + "\0").into_bytes().into_boxed_slice())
-            }
+            },
             (
                 Variant::SignedInteger(v),
                 DbType::Integer {
@@ -142,7 +142,7 @@ impl ColumnValueOps for Variant {
                 let mut buf = vec![0; bytes as usize];
                 byteutils::write_sdbinteger(v, &mut buf);
                 Ok(buf.into_boxed_slice())
-            }
+            },
             (
                 Variant::UnsignedInteger(v),
                 DbType::Integer {
@@ -153,12 +153,12 @@ impl ColumnValueOps for Variant {
                 let mut buf = vec![0; bytes as usize];
                 byteutils::write_udbinteger(v, &mut buf);
                 Ok(buf.into_boxed_slice())
-            }
+            },
             (Variant::Float(v), DbType::F64) => {
                 let mut buf = [0; 8];
                 byteutils::write_dbfloat(*v, &mut buf);
                 Ok(Box::new(buf))
-            }
+            },
             _ => Err(format!("{:?} cannot be converted to bytes", dbtype)),
         }
     }
@@ -261,26 +261,26 @@ impl ColumnValueOps for Variant {
 
     fn cast(&self, dbtype: DbType) -> Result<Self, String> {
         match (self, dbtype) {
-            (e @ Variant::Null, DbType::Null)
-            | (e @ Variant::Bytes(_), DbType::ByteDynamic)
-            | (e @ Variant::StringLiteral(_), DbType::Text)
-            | (e @ Variant::SignedInteger(_), DbType::Integer { signed: true, .. })
-            | (e @ Variant::UnsignedInteger(_), DbType::Integer { signed: false, .. })
-            | (e @ Variant::Float(_), DbType::F64) => Ok(e.clone()),
+            (e @ Variant::Null, DbType::Null) |
+            (e @ Variant::Bytes(_), DbType::ByteDynamic) |
+            (e @ Variant::StringLiteral(_), DbType::Text) |
+            (e @ Variant::SignedInteger(_), DbType::Integer { signed: true, .. }) |
+            (e @ Variant::UnsignedInteger(_), DbType::Integer { signed: false, .. }) |
+            (e @ Variant::Float(_), DbType::F64) => Ok(e.clone()),
             (e, DbType::Text) => {
                 // every variant can be converted to a string
                 Ok(Variant::StringLiteral(e.to_string()))
-            }
+            },
             (e, DbType::ByteDynamic) => {
                 // every variant can be converted to their byte representation
                 e.to_bytes(e.get_dbtype())
                     .map(|b| Variant::Bytes(b.into_vec()))
-            }
+            },
             (Variant::Bytes(bytes), v) => {
                 // every variant can be converted from their byte representation
                 let r: &[u8] = &bytes;
                 ColumnValueOps::from_bytes(v, r.into())
-            }
+            },
             (Variant::Float(float), DbType::Integer { signed, .. }) => {
                 // truncates
                 if signed {
@@ -288,20 +288,20 @@ impl ColumnValueOps for Variant {
                 } else {
                     Ok(Variant::UnsignedInteger(**float as u64))
                 }
-            }
+            },
             // TODO: overflow checks!
             (Variant::UnsignedInteger(integer), DbType::F64) => {
                 Ok(Variant::Float(F64NoNaN::new(*integer as f64)?))
-            }
+            },
             (Variant::SignedInteger(integer), DbType::F64) => {
                 Ok(Variant::Float(F64NoNaN::new(*integer as f64)?))
-            }
+            },
             (Variant::UnsignedInteger(integer), DbType::Integer { signed: true, .. }) => {
                 Ok(Variant::SignedInteger(*integer as i64))
-            }
+            },
             (Variant::SignedInteger(integer), DbType::Integer { signed: false, .. }) => {
                 Ok(Variant::UnsignedInteger(*integer as u64))
-            }
+            },
             (v, t) => Err(format!("'{:?}' cannot be cast to {:?}", v, t)),
         }
     }
@@ -310,11 +310,11 @@ impl ColumnValueOps for Variant {
         Ok(match (self, rhs) {
             (&Variant::StringLiteral(ref l), &Variant::StringLiteral(ref r)) => {
                 Variant::StringLiteral(format!("{}{}", l, r))
-            }
+            },
             (e @ &Variant::StringLiteral(_), rhs) => {
                 let it = rhs.clone().cast(DbType::Text)?;
                 e.concat(&it)?
-            }
+            },
             (e, _) => e.clone(),
         })
     }
@@ -326,10 +326,10 @@ impl ColumnValueOps for Variant {
         Ok(match (self, rhs.clone().cast(dbtype)?) {
             (&Variant::UnsignedInteger(l), Variant::UnsignedInteger(r)) => {
                 Variant::UnsignedInteger(l + r)
-            }
+            },
             (&Variant::SignedInteger(l), Variant::SignedInteger(r)) => {
                 Variant::SignedInteger(l + r)
-            }
+            },
             (&Variant::Float(l), Variant::Float(r)) => Variant::Float(F64NoNaN::new(*l + *r)?),
             _ => self.clone(),
         })
@@ -341,10 +341,10 @@ impl ColumnValueOps for Variant {
         Ok(match (self, rhs.clone().cast(dbtype)?) {
             (&Variant::UnsignedInteger(l), Variant::UnsignedInteger(r)) => {
                 Variant::UnsignedInteger(l - r)
-            }
+            },
             (&Variant::SignedInteger(l), Variant::SignedInteger(r)) => {
                 Variant::SignedInteger(l - r)
-            }
+            },
             (&Variant::Float(l), Variant::Float(r)) => Variant::Float(F64NoNaN::new(*l - *r)?),
             _ => self.clone(),
         })
@@ -356,10 +356,10 @@ impl ColumnValueOps for Variant {
         Ok(match (self, rhs.clone().cast(dbtype)?) {
             (&Variant::UnsignedInteger(l), Variant::UnsignedInteger(r)) => {
                 Variant::UnsignedInteger(l * r)
-            }
+            },
             (&Variant::SignedInteger(l), Variant::SignedInteger(r)) => {
                 Variant::SignedInteger(l * r)
-            }
+            },
             (&Variant::Float(l), Variant::Float(r)) => Variant::Float(F64NoNaN::new(*l * *r)?),
             _ => self.clone(),
         })
@@ -374,17 +374,17 @@ impl ColumnValueOps for Variant {
 
             (&Variant::UnsignedInteger(l), Variant::UnsignedInteger(r)) => {
                 Variant::UnsignedInteger(l / r)
-            }
+            },
             (&Variant::SignedInteger(l), Variant::SignedInteger(r)) => {
                 Variant::SignedInteger(l / r)
-            }
+            },
             (&Variant::Float(l), Variant::Float(r)) => {
                 if r == F64NoNaN::new(0.0)? {
                     Variant::Null
                 } else {
                     Variant::Float(F64NoNaN::new(*l / *r)?)
                 }
-            }
+            },
             _ => self.clone(),
         })
     }

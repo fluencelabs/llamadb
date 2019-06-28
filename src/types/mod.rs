@@ -69,7 +69,7 @@ impl DbType {
                 } else {
                     None
                 }
-            }
+            },
             (_, Some(_)) => None,
         }
     }
@@ -102,7 +102,7 @@ impl DbType {
                 let mut v = vec![0x80];
                 v.extend(repeat(0).take((bytes - 1) as usize));
                 Owned(v)
-            }
+            },
             // Positive zero
             &DbType::F64 => Borrowed(F64_ZERO),
             // Empty string

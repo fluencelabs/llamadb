@@ -175,7 +175,7 @@ mod test {
                         }
                     ]
                 );
-            }
+            },
             st => panic!("Expected create statement but actually={:?}", st),
         }
     }
@@ -205,7 +205,7 @@ mod test {
                         vec![Number("5".to_string()), Number("6".to_string())]
                     ])
                 );
-            }
+            },
             st => panic!("Expected insert but actually={:?}", st),
         }
         let insert_sql2 = parse("INSERT INTO table1 (a, b) VALUES ('foo' || 'bar', 2);");
@@ -234,7 +234,7 @@ mod test {
                         Number("2".to_string())
                     ]])
                 );
-            }
+            },
             st => panic!("Expected insert but actually={:?}", st),
         }
         let insert_sql3 = parse("INSERT INTO table1 SELECT * FROM foo;");
@@ -269,7 +269,7 @@ mod test {
                         order_by: vec![]
                     }))
                 );
-            }
+            },
             st => panic!("Expected insert but actually={:?}", st),
         }
     }
@@ -348,7 +348,7 @@ mod test {
                     })
                 );
                 assert_eq!(order_by, Vec::new());
-            }
+            },
             st => panic!("Expected select statement but actually={:?}", st),
         }
 
@@ -407,7 +407,7 @@ mod test {
                         }
                     ]
                 );
-            }
+            },
             st => panic!("Expected select statement but actually={:?}", st),
         }
         let select_sql3 = parse("SELECT avg(milliseconds) / 1000 seconds FROM track;");
@@ -448,7 +448,7 @@ mod test {
                 assert_eq!(group_by, Vec::new());
                 assert_eq!(having, None);
                 assert_eq!(order_by, Vec::new());
-            }
+            },
             st => panic!("Expected select statement but actually={:?}", st),
         }
     }
@@ -502,7 +502,7 @@ mod test {
                 assert_eq!(group_by, Vec::new());
                 assert_eq!(having, None);
                 assert_eq!(order_by, Vec::new());
-            }
+            },
             st => panic!("Expected explain statement but actually={:?}", st),
         }
     }
@@ -522,7 +522,7 @@ mod test {
                     }
                 );
                 assert_eq!(where_expr, None);
-            }
+            },
             st => panic!("Expected delete statement but actually={:?}", st),
         }
 
@@ -539,7 +539,7 @@ mod test {
                     }
                 );
                 assert_eq!(where_expr, None);
-            }
+            },
             st => panic!("Expected delete statement but actually={:?}", st),
         }
 
@@ -563,7 +563,7 @@ mod test {
                         op: Equal
                     })
                 );
-            }
+            },
             st => panic!("Expected delete statement but actually={:?}", st),
         }
     }
@@ -579,7 +579,7 @@ mod test {
                         table_name: "users".to_string()
                     }
                 );
-            }
+            },
             st => panic!("Expected truncate statement but actually={:?}", st),
         }
     }
@@ -595,7 +595,7 @@ mod test {
                         table_name: "users".to_string()
                     }
                 );
-            }
+            },
             st => panic!("Expected drop statement but actually={:?}", st),
         }
     }
@@ -633,7 +633,7 @@ mod test {
                     ]
                 );
                 assert_eq!(where_expr, None);
-            }
+            },
             st => panic!("Expected update but actually={:?}", st),
         }
 
@@ -675,7 +675,7 @@ mod test {
                         op: Equal
                     })
                 );
-            }
+            },
             st => panic!("Expected update but actually={:?}", st),
         }
 
@@ -769,7 +769,7 @@ mod test {
                         op: Equal
                     })
                 );
-            }
+            },
             st => panic!("Expected update but actually={:?}", st),
         }
     }

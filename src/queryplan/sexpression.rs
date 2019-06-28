@@ -105,7 +105,7 @@ where
                 writeln!(f, "(scan `{}` :source-id {}", table.get_name(), source_id)?;
                 yield_fn.format(f, indent + 1)?;
                 write!(f, ")")
-            }
+            },
             &SExpression::LeftJoin {
                 source_id,
                 ref yield_in_fn,
@@ -126,7 +126,7 @@ where
                     write!(f, "{} ", value)?;
                 }
                 write!(f, "))")
-            }
+            },
             &SExpression::Map {
                 source_id,
                 ref yield_in_fn,
@@ -137,7 +137,7 @@ where
                 writeln!(f, "")?;
                 yield_out_fn.format(f, indent + 1)?;
                 write!(f, ")")
-            }
+            },
             &SExpression::TempGroupBy {
                 source_id,
                 ref yield_in_fn,
@@ -156,7 +156,7 @@ where
                 writeln!(f, ")")?;
                 yield_out_fn.format(f, indent + 1)?;
                 write!(f, ")")
-            }
+            },
             &SExpression::Yield { ref fields } => {
                 write!(f, "(yield")?;
                 for field in fields {
@@ -164,7 +164,7 @@ where
                     field.format(f, indent + 1)?;
                 }
                 write!(f, ")")
-            }
+            },
             &SExpression::ColumnField {
                 source_id,
                 column_offset,
@@ -189,7 +189,7 @@ where
                     e.format(f, indent + 1)?;
                 }
                 write!(f, ")")
-            }
+            },
             &SExpression::BinaryOp {
                 ref op,
                 ref lhs,
@@ -200,12 +200,12 @@ where
                 writeln!(f, "")?;
                 rhs.format(f, indent + 1)?;
                 write!(f, ")")
-            }
+            },
             &SExpression::UnaryOp { ref op, ref expr } => {
                 writeln!(f, "({} ", op.name())?;
                 expr.format(f, indent + 1)?;
                 write!(f, ")")
-            }
+            },
             &SExpression::AggregateOp {
                 ref op,
                 source_id,
@@ -214,10 +214,10 @@ where
                 writeln!(f, "({} :source-id {} ", op.name(), source_id)?;
                 value.format(f, indent + 1)?;
                 write!(f, ")")
-            }
+            },
             &SExpression::CountAll { source_id } => {
                 write!(f, "(count-all :source-id {})", source_id)
-            }
+            },
             &SExpression::Value(ref v) => write!(f, "{}", v),
         }
     }
