@@ -224,33 +224,33 @@ impl Lexer {
             'a'...'z' | 'A'...'Z' | '_' => {
                 self.string_buffer.push(char);
                 Ok(LexerState::Word)
-            },
+            }
             '`' => Ok(LexerState::Backtick),
             '\'' => {
                 // string literal
                 Ok(LexerState::Apostrophe { escaping: false })
-            },
+            }
             '0'...'9' => {
                 self.string_buffer.push(char);
                 Ok(LexerState::Number { decimal: false })
-            },
+            }
             ' ' | '\t' | '\n' => {
                 // whitespace
                 Ok(LexerState::NoState)
-            },
+            }
             c => {
                 use self::Token::*;
 
                 match character_to_token(c) {
-                    Some(LessThan) | Some(GreaterThan) | Some(Minus) | Some(Pipe) |
-                    Some(ForwardSlash) => Ok(LexerState::OperatorDisambiguate { first: c }),
+                    Some(LessThan) | Some(GreaterThan) | Some(Minus) | Some(Pipe)
+                    | Some(ForwardSlash) => Ok(LexerState::OperatorDisambiguate { first: c }),
                     Some(token) => {
                         self.tokens.push(token);
                         Ok(LexerState::NoState)
-                    },
+                    }
                     None => Err(LexerError(format!("Unknown character {}", c))),
                 }
-            },
+            }
         }
     }
 
@@ -271,29 +271,29 @@ impl Lexer {
                     'a'...'z' | 'A'...'Z' | '_' | '0'...'9' => {
                         self.string_buffer.push(c);
                         Ok(LexerState::Word)
-                    },
+                    }
                     c => {
                         let buffer = self.move_string_buffer();
                         self.tokens.push(word_to_token(buffer));
                         self.no_state(c)
-                    },
+                    }
                 },
                 None => {
                     let buffer = self.move_string_buffer();
                     self.tokens.push(word_to_token(buffer));
                     Ok(LexerState::NoState)
-                },
+                }
             },
             LexerState::Backtick => match char {
                 Some('`') => {
                     let buffer = self.move_string_buffer();
                     self.tokens.push(Token::Ident(buffer));
                     Ok(LexerState::NoState)
-                },
+                }
                 Some(c) => {
                     self.string_buffer.push(c);
                     Ok(LexerState::Backtick)
-                },
+                }
                 None => Err(LexerError(
                     "Backtick didn't finish. Something do wrong with ` character".to_string(),
                 )),
@@ -306,15 +306,15 @@ impl Lexer {
                             let buffer = self.move_string_buffer();
                             self.tokens.push(Token::StringLiteral(buffer));
                             Ok(LexerState::NoState)
-                        },
+                        }
                         (false, '\\') => {
                             // unescaped backslash
                             Ok(LexerState::Apostrophe { escaping: true })
-                        },
+                        }
                         (true, _) | _ => {
                             self.string_buffer.push(c);
                             Ok(LexerState::Apostrophe { escaping: false })
-                        },
+                        }
                     }
                 } else {
                     // Apostrophe didn't not finish.
@@ -322,31 +322,31 @@ impl Lexer {
                         "Apostrophe didn't finish. Something do wrong with ' character".to_string(),
                     ))
                 }
-            },
+            }
             LexerState::Number { decimal } => {
                 if let Some(c) = char {
                     match c {
                         '0'...'9' => {
                             self.string_buffer.push(c);
                             Ok(LexerState::Number { decimal })
-                        },
+                        }
                         '.' if !decimal => {
                             // Add a decimal point. None has been added yet.
                             self.string_buffer.push(c);
                             Ok(LexerState::Number { decimal: true })
-                        },
+                        }
                         c => {
                             let buffer = self.move_string_buffer();
                             self.tokens.push(Token::Number(buffer));
                             self.no_state(c)
-                        },
+                        }
                     }
                 } else {
                     let buffer = self.move_string_buffer();
                     self.tokens.push(Token::Number(buffer));
                     Ok(LexerState::NoState)
                 }
-            },
+            }
             LexerState::OperatorDisambiguate { first } => {
                 use self::Token::*;
 
@@ -355,19 +355,19 @@ impl Lexer {
                         ('<', '>') => {
                             self.tokens.push(NotEqual);
                             Ok(LexerState::NoState)
-                        },
+                        }
                         ('<', '=') => {
                             self.tokens.push(LessThanOrEqual);
                             Ok(LexerState::NoState)
-                        },
+                        }
                         ('>', '=') => {
                             self.tokens.push(GreaterThanOrEqual);
                             Ok(LexerState::NoState)
-                        },
+                        }
                         ('|', '|') => {
                             self.tokens.push(DoublePipe);
                             Ok(LexerState::NoState)
-                        },
+                        }
                         ('-', '-') => Ok(LexerState::LineComment),
                         ('/', '*') => Ok(LexerState::BlockComment {
                             was_prev_char_asterisk: false,
@@ -375,13 +375,13 @@ impl Lexer {
                         _ => {
                             character_to_token(first).map(|c| self.tokens.push(c));
                             self.no_state(c)
-                        },
+                        }
                     }
                 } else {
                     character_to_token(first).map(|c| self.tokens.push(c));
                     Ok(LexerState::NoState)
                 }
-            },
+            }
             LexerState::LineComment => match char {
                 Some('\n') => Ok(LexerState::NoState),
                 _ => Ok(LexerState::LineComment),
@@ -396,7 +396,7 @@ impl Lexer {
                         was_prev_char_asterisk: char == Some('*'),
                     })
                 }
-            },
+            }
         };
 
         Ok(self.state = result_state?)
@@ -601,7 +601,7 @@ mod test {
             Ok(_) => panic!("Expected error!"),
             Err(err) => {
                 assert_eq!(err, LexerError("Unknown character 🌠".to_string()));
-            },
+            }
         }
         match parse("`") {
             Ok(_) => panic!("Expected error!"),
@@ -612,7 +612,7 @@ mod test {
                         "Backtick didn\'t finish. Something do wrong with ` character".to_string()
                     )
                 );
-            },
+            }
         }
 
         match parse("'") {
@@ -625,7 +625,7 @@ mod test {
                             .to_string()
                     )
                 );
-            },
+            }
         }
     }
 

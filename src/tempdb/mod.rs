@@ -167,7 +167,7 @@ impl<'a> Group for ScanGroup<'a> {
                                 let l = variable_lengths[variable_length_offset];
                                 variable_length_offset += 1;
                                 l as usize
-                            },
+                            }
                         };
 
                         let bytes = &row[key_offset..key_offset + size];
@@ -250,7 +250,7 @@ impl TempDb {
                     Some(Some(s)) => {
                         let v = self.parse_number_as_u64(s)?;
                         Some(Some(v))
-                    },
+                    }
                     Some(None) => Some(None),
                     None => None,
                 };
@@ -389,7 +389,7 @@ impl TempDb {
                                         let is_null =
                                             variant_to_data(value, dbtype, nullable, &mut buf)?;
                                         Ok((buf.into_boxed_slice(), is_null))
-                                    },
+                                    }
                                     None => {
                                         // use default value for column type
                                         let is_null = if nullable { Some(true) } else { None };
@@ -397,7 +397,7 @@ impl TempDb {
                                             dbtype.get_default().into_owned().into_boxed_slice(),
                                             is_null,
                                         ))
-                                    },
+                                    }
                                 }
                             })
                             .collect::<Result<Vec<_>, ExecuteError>>()
@@ -411,7 +411,7 @@ impl TempDb {
                 }
 
                 Ok(ExecuteStatementResponse::Inserted(count))
-            },
+            }
             ast::InsertSource::Select(_s) => Err(ExecuteError::new(
                 "Inserts with 'select' statement is not supported.",
             )),
@@ -462,7 +462,7 @@ impl TempDb {
                             .truncate()
                             .map_err(ExecuteError::from)
                             .map(ExecuteStatementResponse::Deleted)
-                    },
+                    }
                     Some(_) => {
                         let mut selected_rows = HashSet::<Vec<u8>>::new();
 
@@ -491,9 +491,9 @@ impl TempDb {
                         }
 
                         Ok(ExecuteStatementResponse::Deleted(row_deleted))
-                    },
+                    }
                 }
-            },
+            }
             _ => Err(ExecuteError::new(
                 "Subqueries instead of a Table name isn't allowed.",
             )),
@@ -508,7 +508,7 @@ impl TempDb {
                 let plan = QueryPlan::compile_select(self, select).map_err(ExecuteError::from)?;
 
                 Ok(ExecuteStatementResponse::Explain(plan.to_string()))
-            },
+            }
         }
     }
 
@@ -663,7 +663,7 @@ fn variant_to_data(
             buf.extend_from_slice(&bytes);
 
             Ok(if nullable { Some(false) } else { None })
-        },
+        }
     }
 }
 
@@ -727,7 +727,7 @@ mod test {
                     };
                     Ok(result)
                 }
-            },
+            }
             _ => Err(ExecuteError::new("Can't get count(*)")),
         };
         result
@@ -762,7 +762,7 @@ mod test {
                         "3, Liu Cixin, 30"
                     ]
                 );
-            },
+            }
             _ => panic!("Expected Select result"),
         };
 
@@ -784,7 +784,7 @@ mod test {
             ExecuteStatementResponse::Select { column_names, rows } => {
                 assert_eq!(column_names.to_vec(), vec!["avg", "name"]);
                 assert_eq!(rows_to_strings(rows), vec!["30, Liu Cixin"]);
-            },
+            }
             _ => panic!("Expected Select result"),
         };
 
@@ -801,7 +801,7 @@ mod test {
                     vec!["min", "max", "count", "sum", "avg"]
                 );
                 assert_eq!(rows_to_strings(rows), vec!["30, 50, 3, 120, 40"]);
-            },
+            }
             _ => panic!("Expected Select result"),
         };
 
@@ -895,7 +895,7 @@ mod test {
             Ok(_) => panic!("Expected error result for this statement"),
             Err(ExecuteError { message }) => {
                 assert_eq!(message.clone(), "table does not exist: users")
-            },
+            }
         };
     }
 

@@ -60,7 +60,7 @@ trait RuleExt: Rule {
             Ok(v) => {
                 *tokens = tokens_copy;
                 Ok(Some(v))
-            },
+            }
             Err(RuleError::ExpectingFirst(..)) => Ok(None),
             Err(e) => Err(e),
         }
@@ -179,8 +179,8 @@ impl BinaryOp {
             &Multiply | &Divide => 5,
             &Add | &Subtract | &BitAnd | &BitOr | &Concatenate => 4,
             // comparison
-            &Equal | &NotEqual | &LessThan | &LessThanOrEqual | &GreaterThan |
-            &GreaterThanOrEqual => 3,
+            &Equal | &NotEqual | &LessThan | &LessThanOrEqual | &GreaterThan
+            | &GreaterThanOrEqual => 3,
             // conjugation
             &And => 2,
             &Or => 1,

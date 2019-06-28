@@ -15,7 +15,7 @@ impl fmt::Display for UpdateError {
         match self {
             &UpdateError::ValidationError { ref column_name } => {
                 write!(f, "Problem validating column: {}", column_name)
-            },
+            }
         }
     }
 }
@@ -109,7 +109,7 @@ impl Table {
                         let l = data_len[variable_length_offset];
                         variable_length_offset += 1;
                         l as usize
-                    },
+                    }
                 };
 
                 let bytes = raw_key[key_offset..key_offset + size]
@@ -241,12 +241,12 @@ impl Table {
                     new_row.push(1);
 
                     false
-                },
+                }
                 Some(false) => {
                     new_row.push(0);
 
                     true
-                },
+                }
                 None => true,
             };
 
